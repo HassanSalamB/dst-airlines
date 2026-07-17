@@ -25,8 +25,8 @@ The platform goes beyond basic analytics — it includes a **Machine Learning de
 ## Quick Start
 
 ```bash
-git clone https://github.com/DataScientest-Studio/FEB26-BDE-AIRLINES
-cd FEB26-BDE-AIRLINES
+git clone https://github.com/DataScientest-Studio/dst-airlines-DataOps
+cd dst-airlines-DataOps
 docker-compose up -d
 ```
 
