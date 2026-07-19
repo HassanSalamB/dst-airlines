@@ -27,7 +27,7 @@ The platform goes beyond basic analytics — it includes a **Machine Learning de
 ```bash
 git clone https://github.com/kboroz/dst-airlines-DataOps
 cd dst-airlines-DataOps
-docker-compose up -d
+docker compose up -d
 ```
 
 | Service | URL | Credentials |
