@@ -28,6 +28,16 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: "airlines_db"
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - airlines
+                - -d
+                - airlines_db
+            initialDelaySeconds: 5
+            periodSeconds: 5
           resources:
             requests:
               memory: "256Mi"
@@ -38,10 +48,15 @@ spec:
           volumeMounts:
             - name: pg-data
               mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
       volumes:
         - name: pg-data
           persistentVolumeClaim:
             claimName: pg-pvc
+        - name: postgres-init
+          configMap:
+            name: postgres-init
 ---
 apiVersion: v1
 kind: Service

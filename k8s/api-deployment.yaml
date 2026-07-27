@@ -15,9 +15,22 @@ spec:
     spec:
       containers:
         - name: api
-          image: alidoghan/dst-airlines-api:v1.0
+          image: dst-airlines-api:ci
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
           env:
             - name: DATABASE_URL
               valueFrom:

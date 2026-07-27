@@ -15,9 +15,22 @@ spec:
     spec:
       containers:
         - name: dashboard
-          image: alidoghan/dst-airlines-dashboard:v1.0
+          image: dst-airlines-dashboard:ci
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8050
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8050
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8050
+            initialDelaySeconds: 30
+            periodSeconds: 10
           env:
             - name: API_URL
               valueFrom:
