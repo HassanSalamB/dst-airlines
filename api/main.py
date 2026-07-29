@@ -34,6 +34,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from prometheus_fastapi_instrumentator import Instrumentator
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -142,6 +143,8 @@ app = FastAPI(
     description="Flight delay analytics — PostgreSQL · MongoDB · Neo4j · ML",
     version="2.0.0",
 )
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 app.add_middleware(
     CORSMiddleware,
