@@ -1,0 +1,28 @@
+flowchart TD
+    A["Push, pull request, or manual run"] --> B["Test job"]
+    B --> C["Start PostgreSQL 16 service"]
+    C --> D["Create schema and load test fixtures"]
+    D --> E["Run 47 API tests"]
+    E --> F["Run 34 dashboard tests"]
+    F --> G{"All tests pass?"}
+
+    G -- "No" --> X["Stop pipeline and report failure"]
+    G -- "Yes" --> H["Docker image job"]
+
+    H --> I["Build FastAPI image"]
+    I --> J["Build dashboard image"]
+    J --> K{"Pull request?"}
+
+    K -- "Yes" --> L["Finish after build validation"]
+    K -- "No" --> M["Push SHA-tagged images to GHCR"]
+
+    M --> N["Create temporary Kind cluster"]
+    N --> O["Mirror images to Kind registry"]
+    O --> P["Create namespace, Secret, and ConfigMaps"]
+    P --> Q["Deploy PostgreSQL, MongoDB, Neo4j, API, and dashboard"]
+    Q --> R["Wait for Kubernetes rollouts"]
+    R --> S["Smoke test API and dashboard"]
+    S --> T{"Smoke tests pass?"}
+
+    T -- "No" --> U["Print pods, events, and logs"]
+    T -- "Yes" --> V["Pipeline successful"]

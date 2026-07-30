@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: dst-airlines
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: dst-airlines-dashboard:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8050
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8050
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8050
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          env:
+            - name: API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: dst-airlines-config
+                  key: API_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dst-airlines-secret
+                  key: DATABASE_URL
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
