@@ -1,5 +1,7 @@
 # DST Airlines DataOps
 
+**LIORA DataOps Project | June 2026 Batch**
+
 Flight-delay analytics platform built with FastAPI, Dash, PostgreSQL, MongoDB,
 Neo4j, Docker, Kubernetes, GitHub Actions, Terraform, Prometheus, and Grafana.
 
@@ -17,16 +19,16 @@ deployment but is not a continuously hosted development or production system.
 
 | Step | Requirement | Owner | Status |
 |---|---|---|---|
-| 1 | Docker | Ali Doghan and Hassan Salam | Implemented |
-| 2 | Dev and production configuration | Ali Doghan and Hassan Salam | Compose configurations implemented; persistent environments pending |
-| 3 | Testing | Hassan Salam | 47 API and 34 dashboard tests |
+| 1 | Docker | Ali Doghan and Hassan Salam Banayeem | Implemented |
+| 2 | Dev and production configuration | Ali Doghan and Hassan Salam Banayeem | Compose configurations implemented; persistent environments pending |
+| 3 | Testing | Hassan Salam Banayeem | 47 API and 34 dashboard tests |
 | 4 | Kubernetes | Ali Doghan | Manifests and reusable deployment script; Kind validated |
-| 5 | CI/CD | Hassan Salam | Test, Terraform validation, build, GHCR, Trivy, Kind, smoke tests |
+| 5 | CI/CD | Hassan Salam Banayeem | Test, Terraform validation, build, GHCR, Trivy, Kind, smoke tests |
 | 6 | Infrastructure as Code | Ali Doghan | Terraform for local Docker or Docker on a Proxmox guest through SSH |
 | 7 | Monitoring | Kristian Boroz | API metrics, Prometheus, Grafana, provisioned dashboard |
 | 8 | Security | Ali Doghan | Runtime secret templates, Trivy gate, Dependabot, secret cleanup |
 | 9 | Disaster recovery | Ali Doghan | Recovery plan and backup automation; restore exercise pending |
-| 10 | Documentation | Ali Doghan and Hassan Salam | README, technical guides, diagrams, and Word report |
+| 10 | Documentation | Ali Doghan and Hassan Salam Banayeem | README, technical guides, diagrams, and Word report |
 
 ## Architecture
 
@@ -518,13 +520,13 @@ cluster and suitable persistent storage.
 - `DISASTER_RECOVERY.md` - backup, restore, rollback, and recovery procedures
 - `DST_Airlines_Documentation.docx` - formatted report with linked contents
 
-## Team
+## Project team and contributors
 
-| Member | Assigned work |
+| Member | Role and credited contribution |
 |---|---|
-| Ali Doghan | Steps 1, 2, 4, 6, 8, 9, and 10 |
-| Hassan Salam | Steps 1, 2, 3, 5, and 10 |
-| Kristian Boroz | Step 7 |
+| Hassan Salam Banayeem | Project team; Steps 1, 2, 3, 5, and 10 |
+| Ali Doghan | Project team; Steps 1, 2, 4, 6, 8, 9, and 10 |
+| Kristian Boroz | Monitoring contributor; Step 7 |
 | Durrell Gemuh | Supervisor and mentor |
 
-This repository is a DataScientest LIORA DataOps bootcamp project.
+This repository is the LIORA DataOps project for the June 2026 batch.
