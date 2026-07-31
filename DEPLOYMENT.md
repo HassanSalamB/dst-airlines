@@ -1,119 +1,118 @@
-# Deployment & Operations Guide
+# Deployment Guide
 
-## Local Development
-
-### Start All Services
-```bash
-docker compose up -d
-docker compose ps  # Verify all healthy
-# All services
-docker compose logs -f
-
-# Specific service
-docker compose logs -f api
-docker compose logs -f dashboard
-docker compose logs -f db
-docker compose restart api
-docker compose restart dashboard
-# Find process using port 8000
-lsof -i :8000
-
-# Kill it
-kill -9 <PID>
-
-# Or use different port in docker-compose.yml
-docker exec pg_airlines pg_dump -U airlines airlines_db > backup.sql
-docker exec -i pg_airlines psql -U airlines airlines_db < backup.sql
-# Count records
-docker exec pg_airlines psql -U airlines -d airlines_db -c "SELECT COUNT(*) FROM flights;"
-
-# List airlines
-docker exec pg_airlines psql -U airlines -d airlines_db -c "SELECT DISTINCT airline FROM flights LIMIT 10;"
-docker exec pg_airlines psql -U airlines -d airlines_db << 'SQL'
-CREATE INDEX idx_flights_airline ON flights(airline);
-CREATE INDEX idx_flights_origin ON flights(origin);
-CREATE INDEX idx_flights_destination ON flights(destination);
-CREATE INDEX idx_flights_date ON flights(date);
-SQL
-docker compose ps
-# All should show: "Up X hours (healthy)"
-docker system df
-docker image prune -a --filter "until=240h"
-
----
-
-## **PHASE 2: Initialize Git & Push** (5 mins)
-
-### Step 2.1: Set up Git (if not already)
+## Credential setup
 
 ```bash
-cd ~/dst-airlines-DataOps/dst-airlines-DataOps
+cp .env.dev.example .env.dev
+cp .env.prod.example .env.prod
+cp .env.k8s.example .env.k8s
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+```
 
-# Check if git is initialized
-git status
+Replace all placeholders. Never commit populated copies.
 
-# If not, initialize
-git init
+## Docker development
 
-# Configure git (use your info)
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
-cat > .gitignore << 'EOF'
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-venv/
-env/
-ENV/
+```bash
+docker compose --env-file .env.dev -f docker-compose.dev.yml up --build -d
+docker compose --env-file .env.dev -f docker-compose.dev.yml ps
+docker compose --env-file .env.dev -f docker-compose.dev.yml logs -f api dashboard
+```
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+URLs:
 
-# Environment
-.env
-.env.local
-.env.*.local
+- Dashboard: `http://localhost:8050`
+- API: `http://localhost:8000`
+- API documentation: `http://localhost:8000/docs`
 
-# Docker
-.dockerignore
+## Full local stack
 
-# Logs
-*.log
-logs/
+```bash
+docker compose --env-file .env.dev -f docker-compose.yml up --build -d
+```
 
-# Cache
-.pytest_cache/
-.mypy_cache/
-.coverage
+Additional services:
 
-# Data (optional - keep parquet files?)
-# *.parquet
-# *.csv
+- pgAdmin: `http://localhost:5050`
+- Mongo Express: `http://localhost:8081`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000`
 
-# Secrets
-secrets.json
-*.pem
-*.key
+## Production-oriented Compose
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up --build -d
+```
+
+The production file binds web services to `127.0.0.1` by default and does not
+publish database ports. Add a TLS reverse proxy and firewall before public
+access.
+
+## Minikube
+
+```bash
+minikube start --driver=docker
+eval "$(minikube docker-env)"
+docker build -t dst-airlines-api:ci ./api
+docker build -t dst-airlines-dashboard:ci ./dashboard
+
+cp .env.k8s.example .env.k8s
+# Replace all credential placeholders.
+./scripts/deploy-k8s.sh
+
+minikube service dashboard -n dst-airlines
+```
+
+## Proxmox Docker guest
+
+1. Create an Ubuntu or Debian VM/LXC in Proxmox.
+2. Install Docker in the guest.
+3. Create a non-root deployment user with the required Docker access.
+4. Configure SSH keys and `known_hosts`.
+5. Restrict SSH with the host and Proxmox firewalls.
+6. Do not expose Docker port `2375`.
+7. Configure Terraform with `ssh://user@host:22`.
+
+```bash
+export TF_VAR_docker_host='ssh://docker-user@proxmox-docker-host:22'
+export TF_VAR_deployment_host='proxmox-docker-host'
+export TF_VAR_api_image='ghcr.io/kboroz/dst-airlines-api:<commit-sha>'
+export TF_VAR_dashboard_image='ghcr.io/kboroz/dst-airlines-dashboard:<commit-sha>'
+export TF_VAR_postgres_password='<strong-password>'
+export TF_VAR_neo4j_password='<strong-password>'
+
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+For private GHCR packages, authenticate Docker on the target guest with a
+package-read token stored outside Git.
+
+## Verification
+
+```bash
+curl --fail http://127.0.0.1:8000/
+curl --fail http://127.0.0.1:8050/ >/dev/null
+curl --fail http://127.0.0.1:9090/-/ready
+```
+
+For Kubernetes:
+
+```bash
+kubectl get pods,services,persistentvolumeclaims -n dst-airlines
+kubectl rollout status deployment/api -n dst-airlines
+kubectl rollout status deployment/dashboard -n dst-airlines
+```
+
+## Shutdown
+
+```bash
+docker compose --env-file .env.dev -f docker-compose.dev.yml down
+docker compose --env-file .env.prod -f docker-compose.prod.yml down
+minikube stop
+```
+
+Add `--volumes` or delete the Kubernetes namespace only when data removal is
+intentional.

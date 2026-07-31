@@ -1,3 +1,30 @@
+# Images are managed explicitly so Terraform pulls immutable versions before
+# creating containers on either a local or SSH-connected Docker host.
+resource "docker_image" "postgres" {
+  name         = "postgres:16-alpine"
+  keep_locally = true
+}
+
+resource "docker_image" "mongo" {
+  name         = "mongo:7"
+  keep_locally = true
+}
+
+resource "docker_image" "neo4j" {
+  name         = "neo4j:5"
+  keep_locally = true
+}
+
+resource "docker_image" "api" {
+  name         = var.api_image
+  keep_locally = true
+}
+
+resource "docker_image" "dashboard" {
+  name         = var.dashboard_image
+  keep_locally = true
+}
+
 # ─── NETWORK ────────────────────────────────────────────
 resource "docker_network" "dst_network" {
   name = "dst_airlines_network"
@@ -19,18 +46,13 @@ resource "docker_volume" "neo4j_data" {
 # ─── POSTGRESQL ─────────────────────────────────────────
 resource "docker_container" "postgres" {
   name  = "pg_airlines"
-  image = "postgres:16-alpine"
+  image = docker_image.postgres.image_id
 
   env = [
     "POSTGRES_USER=airlines",
     "POSTGRES_PASSWORD=${var.postgres_password}",
     "POSTGRES_DB=airlines_db"
   ]
-
-  ports {
-    internal = 5432
-    external = 5432
-  }
 
   volumes {
     volume_name    = docker_volume.pg_data.name
@@ -47,12 +69,7 @@ resource "docker_container" "postgres" {
 # ─── MONGODB ────────────────────────────────────────────
 resource "docker_container" "mongo" {
   name  = "mongo_airlines"
-  image = "mongo:7"
-
-  ports {
-    internal = 27017
-    external = 27017
-  }
+  image = docker_image.mongo.image_id
 
   volumes {
     volume_name    = docker_volume.mongo_data.name
@@ -69,23 +86,13 @@ resource "docker_container" "mongo" {
 # ─── NEO4J ──────────────────────────────────────────────
 resource "docker_container" "neo4j" {
   name  = "neo4j_airlines"
-  image = "neo4j:5"
+  image = docker_image.neo4j.image_id
 
   env = [
     "NEO4J_AUTH=neo4j/${var.neo4j_password}",
     "NEO4J_PLUGINS=[\"apoc\"]",
     "NEO4J_server_config_strict__validation_enabled=false"
   ]
-
-  ports {
-    internal = 7474
-    external = 7474
-  }
-
-  ports {
-    internal = 7687
-    external = 7687
-  }
 
   volumes {
     volume_name    = docker_volume.neo4j_data.name
@@ -102,7 +109,7 @@ resource "docker_container" "neo4j" {
 # ─── API ────────────────────────────────────────────────
 resource "docker_container" "api" {
   name  = "airlines_api"
-  image = "alidoghan/dst-airlines-api:v1.0"
+  image = docker_image.api.image_id
 
   env = [
     "DATABASE_URL=postgresql+psycopg2://airlines:${var.postgres_password}@pg_airlines:5432/airlines_db",
@@ -116,6 +123,7 @@ resource "docker_container" "api" {
   ports {
     internal = 8000
     external = 8000
+    ip       = var.public_bind_address
   }
 
   networks_advanced {
@@ -133,7 +141,7 @@ resource "docker_container" "api" {
 # ─── DASHBOARD ──────────────────────────────────────────
 resource "docker_container" "dashboard" {
   name  = "airlines_dashboard"
-  image = "alidoghan/dst-airlines-dashboard:v1.0"
+  image = docker_image.dashboard.image_id
 
   env = [
     "API_URL=http://airlines_api:8000",
@@ -143,6 +151,7 @@ resource "docker_container" "dashboard" {
   ports {
     internal = 8050
     external = 8050
+    ip       = var.public_bind_address
   }
 
   networks_advanced {

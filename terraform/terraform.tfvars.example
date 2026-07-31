@@ -1,0 +1,15 @@
+# Local Docker:
+docker_host = "unix:///var/run/docker.sock"
+
+# Proxmox option:
+# Run Docker inside a Proxmox VM or LXC, configure SSH keys, then use:
+# docker_host = "ssh://docker-user@proxmox-docker-host:22"
+
+deployment_host = "localhost"
+public_bind_address = "127.0.0.1"
+api_image       = "ghcr.io/kboroz/dst-airlines-api:<commit-sha>"
+dashboard_image = "ghcr.io/kboroz/dst-airlines-dashboard:<commit-sha>"
+
+# Do not commit real values. Prefer TF_VAR_* environment variables.
+postgres_password = "replace-with-a-strong-password"
+neo4j_password    = "replace-with-a-strong-password"

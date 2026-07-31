@@ -14,13 +14,14 @@ baseline pipeline required by project requirement 5.
 1. Start a temporary PostgreSQL 16 service.
 2. Create the database schema and load deterministic test fixtures.
 3. Run FastAPI and dashboard tests.
-4. Build the API and dashboard Docker images.
-5. Push commit-tagged images to GitHub Container Registry.
-6. Create a temporary Kind Kubernetes cluster.
-7. Mirror the application images into Kind's local registry.
-8. Create runtime Secrets without storing their values in Git.
-9. Deploy PostgreSQL, MongoDB, Neo4j, the API, and the dashboard.
-10. Wait for all Kubernetes rollouts and smoke test the API and dashboard.
+4. Check Terraform formatting and validate its configuration.
+5. Build the API and dashboard Docker images.
+6. Push commit-tagged images to GitHub Container Registry.
+7. Scan both images with Trivy and fail on fixed critical vulnerabilities.
+8. Create a temporary Kind Kubernetes cluster.
+9. Mirror the application images into Kind's local registry.
+10. Deploy through `scripts/deploy-k8s.sh`, which creates runtime configuration.
+11. Wait for all Kubernetes rollouts and smoke test the API and dashboard.
 
 Images use the Git commit SHA as an immutable tag:
 
@@ -42,6 +43,9 @@ Environment secrets or an external secret manager.
 
 Credentials that were previously committed must be rotated because removing a
 file from the latest revision does not remove it from Git history.
+
+Trivy scans both published images before deployment. Dependabot checks Python,
+Docker, and GitHub Actions dependencies weekly.
 
 ## Current deployment scope
 

@@ -1,9 +1,16 @@
+import os
+
 from sqlalchemy import create_engine, text
 from neo4j import GraphDatabase
 import pandas as pd
 
+database_url = os.environ["DATABASE_URL"]
+neo4j_url = os.getenv("NEO4J_URL", "bolt://neo4j:7687")
+neo4j_user = os.getenv("NEO4J_USER", "neo4j")
+neo4j_password = os.environ["NEO4J_PASS"]
+
 print("Loading routes from PostgreSQL...")
-engine = create_engine('postgresql+psycopg2://airlines:liora@db:5432/airlines_db')
+engine = create_engine(database_url)
 with engine.connect() as conn:
     df = pd.read_sql(text("""
         SELECT origin, dest, origincityname, destcityname,
@@ -18,7 +25,10 @@ with engine.connect() as conn:
 
 print(f"Routes: {len(df):,}")
 
-driver = GraphDatabase.driver("bolt://neo4j:7687", auth=("neo4j","airlines123"))
+driver = GraphDatabase.driver(
+    neo4j_url,
+    auth=(neo4j_user, neo4j_password),
+)
 with driver.session() as session:
     session.run("MATCH (n) DETACH DELETE n")
     airports = set(df["origin"].tolist() + df["dest"].tolist())

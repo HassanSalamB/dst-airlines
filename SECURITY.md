@@ -1,52 +1,88 @@
-# Security Documentation — DST Airlines
+# Security and DevSecOps
 
-## Implemented DevSecOps Controls
+## Implemented controls
 
-### 1. Container Image Scanning (Trivy)
-We use Trivy to scan all Docker images for known vulnerabilities.
+### Runtime secrets
 
-**Images scanned:**
-- `alidoghan/dst-airlines-api:v1.0`
-- `alidoghan/dst-airlines-dashboard:v1.0`
+- Real `.env.*` and `terraform/*.tfvars` files are ignored.
+- Sanitized example files document every required variable.
+- Kubernetes Secrets are created at runtime by `scripts/deploy-k8s.sh`.
+- Docker build contexts exclude environment files.
+- Python database clients fail clearly when required credentials are absent.
 
-**Results:**
-- API image: 171 vulnerabilities (4 Critical, 19 High, 54 Medium, 66 Low)
-- Dashboard image: scanned and report saved
+Never commit populated copies of:
 
-**Reports location:** 
-- `trivy-report-api.json`
-- `trivy-report-dashboard.json`
-
-**How to run:**
-```bash
-trivy image alidoghan/dst-airlines-api:v1.0
-trivy image alidoghan/dst-airlines-dashboard:v1.0
+```text
+.env.dev
+.env.prod
+.env.k8s
+terraform/terraform.tfvars
 ```
 
----
+Credentials present in older commits must be rotated. Deleting a file in a new
+commit does not remove its previous contents from Git history.
 
-### 2. Secrets Management
-All sensitive credentials are stored securely and never hard-coded.
+### Container scanning
 
-**Implementation:**
-- Runtime secrets stored in `.env.dev` and `.env.prod` files
-- Both files are listed in `.gitignore` — never pushed to GitHub
-- Kubernetes Secrets used for all sensitive values in K8s deployments
-- `docker-compose.yml` uses environment variable references (`${VARIABLE}`) instead of plain text values
+GitHub Actions scans the published API and dashboard images with Trivy. The
+pipeline fails when a fixed critical vulnerability is found.
 
-**Kubernetes Secret:** `dst-airlines-secret` in namespace `dst-airlines`
+Local scan:
 
----
+```bash
+trivy image ghcr.io/kboroz/dst-airlines-api:<commit-sha>
+trivy image ghcr.io/kboroz/dst-airlines-dashboard:<commit-sha>
+```
 
-### 3. No Hard-coded Credentials in CI/CD
-- All credentials are passed via environment variables
-- No passwords or API keys exist in any code file
-- `.dockerignore` prevents sensitive files from being included in Docker images
+The checked-in JSON reports are historical evidence only. The CI result is the
+current security gate.
 
----
+### Dependency updates
 
-## Security Recommendations (Future)
-- Update `starlette` to version 1.3.1+ (fixes HIGH vulnerabilities)
-- Update `pip` to version 26.1+ (fixes MEDIUM vulnerabilities)
-- Add GitHub Dependabot for automated dependency scanning
-- Implement HTTPS via ingress + cert-manager
+`.github/dependabot.yml` checks:
+
+- API Python dependencies
+- Dashboard Python dependencies
+- API and dashboard Docker base images
+- GitHub Actions
+
+### Infrastructure transport
+
+Terraform accepts only:
+
+- `unix:///var/run/docker.sock` for local Docker
+- `ssh://user@host:22` for a remote Docker guest
+
+Plain Docker TCP endpoints are rejected. Do not expose port `2375`.
+
+### Network exposure
+
+The production Compose and Terraform configurations:
+
+- do not publish PostgreSQL, MongoDB, or Neo4j ports;
+- bind web/monitoring ports to `127.0.0.1` by default;
+- expect a TLS reverse proxy and host firewall for public access.
+
+## Production requirements
+
+Before a public deployment:
+
+1. Rotate previously exposed credentials.
+2. Restrict SSH by source address and key; disable password authentication.
+3. Put the API, dashboard, and Grafana behind HTTPS.
+4. Store production secrets in protected GitHub Environments or a secret manager.
+5. Add Kubernetes NetworkPolicy and least-privilege RBAC if using Kubernetes.
+6. Review Trivy and Dependabot findings before promotion.
+7. Back up databases off-host and verify restores.
+
+## Incident response
+
+If a credential or image is compromised:
+
+1. Disable the affected account, token, or endpoint.
+2. Rotate credentials and update protected runtime configuration.
+3. Rebuild images from a reviewed commit.
+4. Run tests and Trivy scans.
+5. Deploy immutable SHA-tagged images.
+6. Review host, registry, and application logs.
+7. Document the incident and prevention action.

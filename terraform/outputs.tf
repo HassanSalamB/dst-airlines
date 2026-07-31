@@ -1,11 +1,11 @@
 output "api_url" {
   description = "DST Airlines API URL"
-  value       = "http://${var.proxmox_host}:8000"
+  value       = "http://${var.deployment_host}:8000"
 }
 
 output "dashboard_url" {
   description = "DST Airlines Dashboard URL"
-  value       = "http://${var.proxmox_host}:8050"
+  value       = "http://${var.deployment_host}:8050"
 }
 
 output "postgres_container" {

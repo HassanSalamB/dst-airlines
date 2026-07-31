@@ -1,12 +1,16 @@
 terraform {
+  required_version = ">= 1.6.0"
+
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 3.9"
     }
   }
 }
 
 provider "docker" {
-  host = "tcp://51.158.200.169:2375"
+  # Use the local socket or SSH to a Docker host. Never expose unauthenticated
+  # Docker TCP port 2375 to a network.
+  host = var.docker_host
 }

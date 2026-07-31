@@ -2,12 +2,19 @@
 app.py — DST Airlines Dashboard v4 — FINAL
 """
 import pickle
+import requests
 import pandas as pd
 import numpy as np
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
-from data import get_flights_df, api_healthy, AIRLINES, AIRPORTS
+from data import (
+    API_BASE_URL,
+    AIRLINES,
+    AIRPORTS,
+    api_healthy,
+    get_flights_df,
+)
 from charts import ChartFactory
 from weather import get_weather
 
@@ -341,21 +348,17 @@ class App:
             if not from_iata or not to_iata:
                 return html.Div("⚠ Enter both airports.",style={"color":AMBER})
             try:
-                from neo4j import GraphDatabase
-                driver = GraphDatabase.driver("bolt://neo4j:7687",auth=("neo4j","airlines123"))
-                with driver.session() as session:
-                    result = session.run("""
-                        MATCH path = shortestPath(
-                            (a:Airport {iata:$from})-[:ROUTE*..10]->(b:Airport {iata:$to})
-                        )
-                        RETURN [n in nodes(path) | n.iata] AS stops,
-                               length(path) AS hops
-                    """, **{"from": from_iata.upper(), "to": to_iata.upper()})
-                    row = result.single()
-                driver.close()
-                if not row:
+                response = requests.get(
+                    f"{API_BASE_URL}/routes/path",
+                    params={"origin": from_iata, "dest": to_iata},
+                    timeout=10,
+                )
+                if response.status_code == 404:
                     return html.Div("❌ No path found.",style={"color":RED,"fontSize":"13px"})
-                stops = row["stops"]; hops = row["hops"]
+                response.raise_for_status()
+                route = response.json()
+                stops = route["airports"]
+                hops = route["hops"]
                 return html.Div([
                     html.Div(f"✅ Shortest path: {hops} stop(s)",style={"fontSize":"14px","fontWeight":"700","color":GREEN,"marginBottom":"12px"}),
                     html.Div([

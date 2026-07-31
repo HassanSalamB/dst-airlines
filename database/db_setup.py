@@ -22,13 +22,12 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
-# ── Connection config (read from env vars or defaults) ────────────────────
-PG_URL   = os.getenv("DATABASE_URL",
-           "postgresql+psycopg2://airlines:liora@localhost:5432/airlines_db")
+# ── Connection config (secrets must be provided through environment variables) ─
+PG_URL   = os.getenv("DATABASE_URL")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/")
 NEO4J_URL = os.getenv("NEO4J_URL", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASS = os.getenv("NEO4J_PASS", "airlines123")
+NEO4J_PASS = os.getenv("NEO4J_PASS")
 
 DATA_DIR = Path("collected_data")
 
@@ -45,6 +44,8 @@ class PostgreSQLSetup:
     """
 
     def __init__(self, url: str = PG_URL):
+        if not url:
+            raise ValueError("DATABASE_URL is required for PostgreSQL setup")
         try:
             from sqlalchemy import create_engine, text
             self.engine = create_engine(url)
@@ -314,6 +315,8 @@ class Neo4jSetup:
 
     def __init__(self, url: str = NEO4J_URL,
                  user: str = NEO4J_USER, password: str = NEO4J_PASS):
+        if not password:
+            raise ValueError("NEO4J_PASS is required for Neo4j setup")
         try:
             from neo4j import GraphDatabase
             self.driver = GraphDatabase.driver(url, auth=(user, password))

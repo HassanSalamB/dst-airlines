@@ -93,10 +93,36 @@ jobs:
         working-directory: dashboard
         run: python -m pytest -q test_data.py
 
+  infrastructure:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize Terraform without a backend
+        working-directory: terraform
+        run: terraform init -backend=false -input=false
+
+      - name: Validate Terraform
+        working-directory: terraform
+        run: terraform validate -no-color
+
   images:
     name: Build and publish images
     runs-on: ubuntu-latest
-    needs: test
+    needs:
+      - test
+      - infrastructure
 
     steps:
       - name: Check out repository
@@ -131,10 +157,42 @@ jobs:
           cache-from: type=gha,scope=dashboard
           cache-to: type=gha,mode=max,scope=dashboard
 
+  security:
+    name: Scan published images
+    runs-on: ubuntu-latest
+    needs: images
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan API image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.API_IMAGE }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL
+
+      - name: Scan dashboard image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.DASHBOARD_IMAGE }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL
+
   deploy-kind:
     name: Deploy to Kind and smoke test
     runs-on: ubuntu-latest
-    needs: images
+    needs: security
     if: github.event_name != 'pull_request'
     timeout-minutes: 20
 
@@ -171,42 +229,16 @@ jobs:
           echo "KIND_API_IMAGE=$KIND_REGISTRY/dst-airlines-api:${GITHUB_SHA}" >> "$GITHUB_ENV"
           echo "KIND_DASHBOARD_IMAGE=$KIND_REGISTRY/dst-airlines-dashboard:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
-      - name: Prepare Kubernetes manifests
-        run: |
-          sed -i "s|image: dst-airlines-api:ci|image: $KIND_API_IMAGE|" k8s/api-deployment.yaml
-          sed -i "s|image: dst-airlines-dashboard:ci|image: $KIND_DASHBOARD_IMAGE|" k8s/dashboard-deployment.yaml
-
-      - name: Create namespace and runtime configuration
-        run: |
-          kubectl apply -f k8s/namespace.yaml
-          kubectl --namespace dst-airlines create secret generic dst-airlines-secret \
-            --from-literal=POSTGRES_PASSWORD=ci_runtime_password \
-            --from-literal=NEO4J_PASSWORD=ci_neo4j_password \
-            --from-literal=NEO4J_AUTH=neo4j/ci_neo4j_password \
-            --from-literal=PGADMIN_PASSWORD=ci_pgadmin_password \
-            --from-literal=DATABASE_URL=postgresql+psycopg2://airlines:ci_runtime_password@db:5432/airlines_db
-          kubectl --namespace dst-airlines create configmap postgres-init \
-            --from-file=init.sql=database/sql/init.sql \
-            --from-file=test_seed.sql=database/sql/test_seed.sql
-
       - name: Deploy application
+        env:
+          POSTGRES_PASSWORD: ci_runtime_password
+          NEO4J_PASSWORD: ci_neo4j_password
+          NEO4J_AUTH: neo4j/ci_neo4j_password
+          DATABASE_URL: postgresql+psycopg2://airlines:ci_runtime_password@db:5432/airlines_db
+          API_IMAGE: ${{ env.KIND_API_IMAGE }}
+          DASHBOARD_IMAGE: ${{ env.KIND_DASHBOARD_IMAGE }}
         run: |
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/postgres-deployment.yaml
-          kubectl apply -f k8s/mongo-deployment.yaml
-          kubectl apply -f k8s/neo4j-deployment.yaml
-          kubectl apply -f k8s/api-service.yaml
-          kubectl apply -f k8s/api-deployment.yaml
-          kubectl apply -f k8s/dashboard-service.yaml
-          kubectl apply -f k8s/dashboard-deployment.yaml
-
-      - name: Wait for Kubernetes rollouts
-        run: |
-          kubectl --namespace dst-airlines rollout status deployment/db --timeout=300s
-          kubectl --namespace dst-airlines rollout status deployment/mongo --timeout=300s
-          kubectl --namespace dst-airlines rollout status deployment/neo4j --timeout=300s
-          kubectl --namespace dst-airlines rollout status deployment/api --timeout=300s
-          kubectl --namespace dst-airlines rollout status deployment/dashboard --timeout=300s
+          ./scripts/deploy-k8s.sh
 
       - name: Smoke test API and dashboard
         run: |

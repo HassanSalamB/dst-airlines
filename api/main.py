@@ -41,12 +41,11 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ── Config ────────────────────────────────────────────────────────────────
-PG_URL = os.getenv("DATABASE_URL",
-         "postgresql+psycopg2://airlines:liora@localhost:5432/airlines_db")
+PG_URL = os.getenv("DATABASE_URL")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017/")
 NEO4J_URL = os.getenv("NEO4J_URL", "bolt://neo4j:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASS = os.getenv("NEO4J_PASS", "airlines123")
+NEO4J_PASS = os.getenv("NEO4J_PASS")
 MODEL_PATH = os.getenv("MODEL_PATH", "logistic_regression.pkl")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -60,6 +59,8 @@ class DBClients:
     @classmethod
     def pg(cls):
         if cls._pg is None:
+            if not PG_URL:
+                raise RuntimeError("DATABASE_URL is required for PostgreSQL access")
             from sqlalchemy import create_engine
             cls._pg = create_engine(PG_URL)
         return cls._pg
@@ -75,6 +76,8 @@ class DBClients:
     @classmethod
     def neo4j(cls):
         if cls._neo4j is None:
+            if not NEO4J_PASS:
+                raise RuntimeError("NEO4J_PASS is required for Neo4j access")
             from neo4j import GraphDatabase
             cls._neo4j = GraphDatabase.driver(
                 NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASS))

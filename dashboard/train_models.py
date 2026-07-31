@@ -1,11 +1,15 @@
+import os
 import pandas as pd
 from sqlalchemy import create_engine
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.preprocessing import LabelEncoder
 import pickle
 
+database_url = os.environ["DATABASE_URL"]
+model_path = os.getenv("MODEL_PATH", "/app/models.pkl")
+
 print("Loading data...")
-engine = create_engine('postgresql+psycopg2://airlines:liora@db:5432/airlines_db')
+engine = create_engine(database_url)
 df = pd.read_sql("""
     SELECT operating_airline, origin, dest, distance,
            depdelay, depdel15::int as delayed
@@ -35,7 +39,7 @@ reg_model = LinearRegression()
 reg_model.fit(X[mask], df[mask]['depdelay'])
 print("Regression model trained")
 
-with open('/app/models.pkl', 'wb') as f:
+with open(model_path, 'wb') as f:
     pickle.dump({
         'cls': cls_model,
         'reg': reg_model,

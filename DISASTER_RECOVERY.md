@@ -1,187 +1,160 @@
-# Disaster Recovery Plan — DST Airlines
+# Disaster Recovery Plan
 
-## Overview
+## Scope
 
-This document describes the disaster recovery procedures for the DST Airlines platform. It covers database backups, container failure recovery, infrastructure recreation, and rollback procedures.
+This plan covers PostgreSQL, MongoDB, Neo4j, application containers, Kubernetes
+rollbacks, and Terraform-managed Docker infrastructure.
 
----
+Recovery-time and recovery-point values are targets until a restore exercise
+measures them.
 
-## 1. Database Backup Strategy
+## Backup policy
+
+| Data | Frequency | Retention | Required storage |
+|---|---|---|---|
+| PostgreSQL | Daily | 7 daily copies | Encrypted off-host storage |
+| MongoDB | Daily | 7 daily copies | Encrypted off-host storage |
+| Neo4j | Daily or after graph refresh | 7 copies | Encrypted off-host storage |
+| Terraform state | After every apply | Versioned protected backend | Encrypted remote state |
+
+Run the backup script on the Docker host:
+
+```bash
+BACKUP_ROOT=/secure/off-host/path \
+BACKUP_RETENTION_DAYS=7 \
+./scripts/backup_databases.sh
+```
+
+The script:
+
+1. creates a timestamped directory;
+2. writes a custom-format PostgreSQL dump;
+3. writes a compressed MongoDB archive;
+4. briefly stops Neo4j and creates an offline database dump;
+5. writes SHA-256 checksums;
+6. restarts Neo4j even if the dump fails;
+7. prunes expired timestamped backup directories.
+
+Copy backups away from the Docker host and monitor backup failures.
+
+## Restore validation
+
+Before using a backup:
+
+```bash
+cd /secure/off-host/path/<timestamp>
+shasum -a 256 -c SHA256SUMS
+```
+
+Restore into an isolated environment first.
 
 ### PostgreSQL
 
 ```bash
-# Create a backup
-docker exec pg_airlines pg_dump -U airlines airlines_db > backup_postgres_$(date +%Y%m%d).sql
-
-# Restore from backup
-docker exec -i pg_airlines psql -U airlines airlines_db < backup_postgres_20260731.sql
+docker exec -i pg_airlines \
+  pg_restore --username=airlines --dbname=airlines_db \
+  --clean --if-exists < postgresql.dump
 ```
-
-- **Frequency:** Daily
-- **Retention:** 7 days
-- **Storage:** Store backups outside the container (local or cloud storage)
 
 ### MongoDB
 
 ```bash
-# Create a backup
-docker exec mongo_airlines mongodump --out /backup/mongo_$(date +%Y%m%d)
-
-# Restore from backup
-docker exec mongo_airlines mongorestore /backup/mongo_20260731
+docker exec -i mongo_airlines \
+  mongorestore --archive --gzip --drop < mongodb.archive.gz
 ```
-
-- **Frequency:** Daily
-- **Retention:** 7 days
 
 ### Neo4j
 
-```bash
-# Create a backup
-docker exec neo4j_airlines neo4j-admin database dump neo4j --to-path=/backup
+Neo4j Community dump/load requires the database to be offline:
 
-# Restore from backup
-docker exec neo4j_airlines neo4j-admin database load neo4j --from-path=/backup
+```bash
+docker stop neo4j_airlines
+docker run --rm \
+  --volumes-from neo4j_airlines \
+  --volume "$PWD:/backups:ro" \
+  --entrypoint neo4j-admin \
+  neo4j:5 \
+  database load neo4j --from-path=/backups --overwrite-destination=true
+docker start neo4j_airlines
 ```
 
-- **Frequency:** Weekly
-- **Retention:** 4 weeks
+After each restore, verify record counts, representative API queries, dashboard
+loading, and Neo4j path queries.
 
----
+## Container and pod recovery
 
-## 2. Container Failure Recovery
-
-### What happens if a container fails?
-
-All containers are configured with `restart: always` in both Docker Compose and Kubernetes. This means:
-
-- If a container crashes, Docker or Kubernetes will automatically restart it
-- No manual intervention is needed for simple crashes
-- Data is preserved in persistent volumes (PVC in Kubernetes, named volumes in Docker)
-
-### Manual recovery steps:
+Docker Compose uses restart policies. Kubernetes Deployments recreate failed
+containers and pods.
 
 ```bash
-# Check container status
-docker ps -a
+docker compose ps
+docker compose restart api dashboard
 
-# Restart a specific container
-docker restart pg_airlines
-
-# Check Kubernetes pod status
 kubectl get pods -n dst-airlines
-
-# Restart a Kubernetes deployment
 kubectl rollout restart deployment/api -n dst-airlines
-```
-
----
-
-## 3. Kubernetes Node Failure
-
-If a Kubernetes node fails:
-
-1. Kubernetes automatically reschedules pods to healthy nodes
-2. Persistent data is preserved in PersistentVolumeClaims (PVC)
-3. Services continue to route traffic to healthy pods
-
-```bash
-# Check node status
-kubectl get nodes
-
-# Check pod rescheduling
-kubectl get pods -n dst-airlines -o wide
-```
-
----
-
-## 4. Rollback to Previous Version
-
-### Docker rollback
-
-```bash
-# Pull previous image version
-docker pull alidoghan/dst-airlines-api:v1.0
-
-# Stop current container and start with old image
-docker stop airlines_api
-docker run -d --name airlines_api alidoghan/dst-airlines-api:v1.0
-```
-
-### Kubernetes rollback
-
-```bash
-# Rollback to previous deployment
-kubectl rollout undo deployment/api -n dst-airlines
-kubectl rollout undo deployment/dashboard -n dst-airlines
-
-# Check rollback status
 kubectl rollout status deployment/api -n dst-airlines
 ```
 
-### CI/CD rollback
+Kind and default Minikube are single-node clusters. If that node fails, there is
+no healthy node to receive a rescheduled pod. Node-failure recovery requires a
+multi-node cluster and storage that remains available to replacement nodes.
 
-Each image is tagged with the Git commit SHA. To rollback:
+## Image rollback
 
-1. Find the previous commit SHA from GitHub
-2. Pull the image with that SHA tag from GHCR
-3. Update the Kubernetes deployment with the old image tag
+Every CI-published image uses the Git commit SHA.
 
 ```bash
-git log --oneline
-# Copy the previous commit SHA
-kubectl set image deployment/api api=ghcr.io/kboroz/dst-airlines-api:<previous-sha> -n dst-airlines
+kubectl -n dst-airlines set image \
+  deployment/api \
+  api=ghcr.io/kboroz/dst-airlines-api:<previous-sha>
+
+kubectl -n dst-airlines set image \
+  deployment/dashboard \
+  dashboard=ghcr.io/kboroz/dst-airlines-dashboard:<previous-sha>
+
+kubectl -n dst-airlines rollout status deployment/api
+kubectl -n dst-airlines rollout status deployment/dashboard
 ```
 
----
-
-## 5. Infrastructure Recreation from Terraform
-
-If the entire infrastructure needs to be recreated:
+If Kubernetes deployment history is available:
 
 ```bash
-# Navigate to terraform directory
+kubectl rollout undo deployment/api -n dst-airlines
+kubectl rollout undo deployment/dashboard -n dst-airlines
+```
+
+## Infrastructure recreation
+
+For a local or Proxmox Docker guest:
+
+```bash
 cd terraform
-
-# Initialize Terraform
 terraform init
-
-# Review the plan
-terraform plan -var-file="terraform.tfvars"
-
-# Apply and recreate everything
-terraform apply -var-file="terraform.tfvars"
+terraform plan
+terraform apply
 ```
 
-This will recreate:
-- Docker network
-- All persistent volumes
-- All containers (PostgreSQL, MongoDB, Neo4j, API, Dashboard)
+Terraform recreates the Docker network, volumes, and containers. Restoring
+database content is a separate step.
 
----
+## Recovery order
 
-## 6. Recovery Order
+1. Secure and verify the host.
+2. Recreate infrastructure with Terraform.
+3. Restore PostgreSQL and verify SQL data.
+4. Restore MongoDB and verify collections.
+5. Restore Neo4j and verify graph queries.
+6. Start API and verify health and representative endpoints.
+7. Start dashboard and monitoring.
+8. Record actual recovery time and any data loss.
 
-In case of complete system failure, follow this order:
+## Recovery exercise
 
-| Step | Action |
-|------|--------|
-| 1 | Recreate infrastructure with Terraform |
-| 2 | Start PostgreSQL and restore database backup |
-| 3 | Start MongoDB and restore backup |
-| 4 | Start Neo4j and restore backup |
-| 5 | Start API container |
-| 6 | Start Dashboard container |
-| 7 | Verify all services are healthy |
+At least once before submission or production use:
 
----
-
-## 7. Expected Recovery Time
-
-| Scenario | Expected Time |
-|----------|--------------|
-| Single container crash | < 30 seconds (auto-restart) |
-| Full infrastructure recreation | < 15 minutes |
-| Database restore from backup | < 30 minutes |
-| Complete system recovery | < 1 hour |
+1. create a full backup;
+2. deploy an isolated empty environment;
+3. restore all three databases;
+4. run API and dashboard smoke tests;
+5. record measured RTO and RPO;
+6. update this plan with the result.
