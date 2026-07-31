@@ -362,7 +362,8 @@ flowchart LR
 Terraform is Step 6: Infrastructure as Code. It creates the Docker network,
 volumes, database containers, API, and dashboard in a reproducible way.
 
-Proxmox is not itself a project step. It is a possible hosting platform:
+Proxmox is not itself a project step. In this project it provides the
+persistent Docker hosting environment:
 
 - Create a Linux VM or LXC guest in Proxmox.
 - Install Docker inside that guest.
@@ -374,6 +375,14 @@ Using Proxmox contributes to Step 2 when it hosts a persistent environment,
 Step 6 when Terraform defines that environment, and Step 5 only if CI/CD is
 later configured to deploy to it. Running Docker on Proxmox does not replace
 the Step 4 Kubernetes requirement; the existing Kind validation covers Step 4.
+
+Verified live endpoints (31 July 2026):
+
+- Dashboard: [http://51.158.200.169:8050](http://51.158.200.169:8050)
+- API: [http://51.158.200.169:8000](http://51.158.200.169:8000)
+
+Both endpoints returned HTTP 200 during verification. The deployment is a
+public demonstration over HTTP, not a hardened production environment.
 
 ### Terraform credentials and run commands
 
@@ -492,8 +501,8 @@ cluster and suitable persistent storage.
 
 1. Replace all committed demo credentials with protected, unique production
    secrets before any public deployment.
-2. Provide a secured Proxmox Docker guest or another persistent deployment
-   target.
+2. Harden the existing Proxmox deployment and define a separate approved
+   production release target.
 3. Configure production TLS, firewall rules, and protected CI/CD credentials.
 4. Add a GitHub `production` Environment with required reviewers before
    enabling automatic production deployment.
