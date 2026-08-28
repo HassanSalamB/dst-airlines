@@ -368,10 +368,26 @@ class ChartFactory:
             frame["label"] = frame["callsign"].fillna(frame["icao24"]).fillna("Unknown")
             frame["altitude_ft"] = pd.to_numeric(frame.get("altitude_ft"), errors="coerce")
             frame["speed_kmh"] = pd.to_numeric(frame.get("speed_kmh"), errors="coerce")
+            frame["heading"] = pd.to_numeric(frame.get("heading"), errors="coerce").fillna(0)
+            altitude_color = frame["altitude_ft"].fillna(0).clip(lower=0, upper=45000)
+            altitude_scale = [[0, GREEN], [0.45, CYAN], [1, PURPLE]]
+            marker_common = dict(
+                angle=frame["heading"], angleref="north", color=altitude_color,
+                colorscale=altitude_scale, cmin=0, cmax=45000,
+            )
             fig.add_trace(go.Scattergeo(
-                lat=frame["latitude"], lon=frame["longitude"], mode="text",
-                text=["✈"] * len(frame),
-                textfont=dict(size=17, color=CYAN),
+                lat=frame["latitude"], lon=frame["longitude"], mode="markers",
+                marker={
+                    **marker_common,
+                    "size": 18,
+                    "symbol": "arrow-up",
+                    "showscale": True,
+                    "line": dict(color="rgba(255,255,255,0.65)", width=0.8),
+                    "colorbar":dict(
+                        title=dict(text="Altitude (ft)", font=dict(color=MUTED, size=10)),
+                        tickfont=dict(color=MUTED, size=9), outlinewidth=0, thickness=10,
+                    ),
+                },
                 customdata=frame[["label", "icao24", "altitude_ft", "speed_kmh", "heading", "nearest_airport", "distance_to_airport_km"]].values,
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>ICAO24: %{customdata[1]}<br>"
@@ -379,6 +395,16 @@ class ChartFactory:
                     "Heading: %{customdata[4]:.0f}°<br>Nearest gateway: %{customdata[5]} "
                     "(%{customdata[6]:.0f} km)<extra></extra>"
                 ),
+            ))
+            fig.add_trace(go.Scattergeo(
+                lat=frame["latitude"], lon=frame["longitude"], mode="markers",
+                marker={
+                    **marker_common,
+                    "size": 13,
+                    "symbol": "line-ew",
+                    "showscale": False,
+                },
+                hoverinfo="skip", showlegend=False,
             ))
         else:
             fig.add_annotation(

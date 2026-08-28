@@ -87,21 +87,25 @@ class LB:
             html.Div([html.Div("Gateway Airport",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
                       dcc.Dropdown(id="filter-gulf-airport",value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown")],
                      style={"padding":"0 10px","marginBottom":"14px"}),
-            html.Div([html.Div("Airline",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                      dcc.Dropdown(id="filter-airline",options=airline_opts,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown")],
-                     style={"padding":"0 10px","marginBottom":"14px"}),
-            html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"14px"}),
-            html.Div("ANALYTICS WINDOW",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"0 14px 10px"}),
-            html.Div([html.Div("Month Range",style={"color":MUTED,"fontSize":"11px","marginBottom":"8px"}),
-                      dcc.RangeSlider(id="filter-month",min=1,max=12,step=1,value=[1,12],
-                                      marks={1:"Jan",3:"Mar",6:"Jun",9:"Sep",12:"Dec"})],
-                     style={"padding":"0 10px","marginBottom":"14px"}),
-            html.Div([html.Div("Operational Status",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                      dcc.RadioItems(id="filter-delayed",
-                                     options=[{"label":"  All Flights","value":"all"},{"label":"  Delayed Only","value":"delayed"}],
-                                     value="all",style={"color":MUTED,"fontSize":"12px"},
-                                     labelStyle={"display":"block","marginBottom":"4px"})],
-                     style={"padding":"0 10px"}),
+            html.Div([
+                html.Div([html.Div("Airline",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                          dcc.Dropdown(id="filter-airline",options=airline_opts,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown")],
+                         style={"padding":"0 10px","marginBottom":"14px"}),
+            ],id="airline-filter-section"),
+            html.Div([
+                html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"14px"}),
+                html.Div("ANALYTICS WINDOW",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"0 14px 10px"}),
+                html.Div([html.Div("Month Range",style={"color":MUTED,"fontSize":"11px","marginBottom":"8px"}),
+                          dcc.RangeSlider(id="filter-month",min=1,max=12,step=1,value=[1,12],
+                                          marks={1:"Jan",3:"Mar",6:"Jun",9:"Sep",12:"Dec"})],
+                         style={"padding":"0 10px","marginBottom":"14px"}),
+                html.Div([html.Div("Operational Status",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                          dcc.RadioItems(id="filter-delayed",
+                                         options=[{"label":"  All Flights","value":"all"},{"label":"  Delayed Only","value":"delayed"}],
+                                         value="all",style={"color":MUTED,"fontSize":"12px"},
+                                         labelStyle={"display":"block","marginBottom":"4px"})],
+                         style={"padding":"0 10px"}),
+            ],id="analytics-filter-section"),
             html.Div("Live positions · OpenSky  |  Weather · Open-Meteo  |  Analytics · portfolio simulation",
                      style={"fontSize":"9px","color":MUTED,"padding":"16px 10px","lineHeight":"1.5"}),
         ],style={"width":SIDEBAR_W,"minWidth":SIDEBAR_W,"backgroundColor":CARD,"borderRight":f"1px solid {BORDER}",
@@ -163,12 +167,13 @@ class LB:
             {"name":"Nearest gateway","id":"nearest_airport"},
             {"name":"Distance km","id":"distance_to_airport_km"},
             {"name":"Altitude ft","id":"altitude_ft"},{"name":"Speed km/h","id":"speed_kmh"},
-            {"name":"Heading","id":"heading"},{"name":"Route match","id":"route_source"},
+            {"name":"Heading","id":"heading"},{"name":"Registration country","id":"registration_country"},
+            {"name":"Route match","id":"route_source"},
         ]
         return html.Div([
             self.intro("LIVE AIRSPACE","Aircraft being observed now",
                        "Shows current OpenSky aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
-                       "Choose a country and gateway, inspect current coordinates, then use altitude, speed and heading to understand the aircraft's present state.",
+                       "Choose a country and gateway; icon color shows altitude and the aircraft nose follows its reported heading. Inspect the table for route and current-position detail.",
                        "Positions: OpenSky · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
             html.Div([
                 html.Div([
@@ -370,6 +375,16 @@ class App:
             [Input(f"nav-{p}","n_clicks") for p in ["live","overview","airlines","map","routes","trends","risk","predict"]],
             State("page","data"),prevent_initial_call=True)
 
+        @app.callback(
+            Output("airline-filter-section","style"),
+            Output("analytics-filter-section","style"),
+            Input("page","data"),
+        )
+        def contextual_sidebar(page):
+            analytics_pages={"overview","airlines","map","routes","trends"}
+            visible={} if page in analytics_pages else {"display":"none"}
+            return visible, visible
+
         def _f(country,airport,airline,months,delayed):
             market = GULF_COUNTRIES.get(country, {})
             if airport not in market.get("airports", {}):
@@ -521,7 +536,7 @@ class App:
             table_rows=[{key:row.get(key) for key in [
                 "callsign","origin","destination","current_area","current_position","nearest_airport",
                 "distance_to_airport_km","altitude_ft","speed_kmh","heading",
-                "route_source",
+                "registration_country","route_source",
             ]} for row in rows]
             return (
                 charts.live_aircraft_map(rows,country,airport),table_rows,status,
