@@ -360,6 +360,62 @@ class ChartFactory:
         )
         return fig
 
+    def live_aircraft_map(self, rows: list[dict], country: str, airport: str) -> go.Figure:
+        """Map current OpenSky state vectors without implying schedule status."""
+        frame = pd.DataFrame(rows)
+        fig = go.Figure()
+        if not frame.empty:
+            frame["label"] = frame["callsign"].fillna(frame["icao24"]).fillna("Unknown")
+            frame["altitude_ft"] = pd.to_numeric(frame.get("altitude_ft"), errors="coerce")
+            frame["speed_kmh"] = pd.to_numeric(frame.get("speed_kmh"), errors="coerce")
+            fig.add_trace(go.Scattergeo(
+                lat=frame["latitude"], lon=frame["longitude"], mode="markers",
+                marker=dict(
+                    size=9,
+                    color=frame["altitude_ft"].fillna(0),
+                    colorscale=[[0, GREEN], [0.45, CYAN], [1, PURPLE]],
+                    opacity=0.9,
+                    line=dict(color="rgba(255,255,255,0.35)", width=0.7),
+                    colorbar=dict(
+                        title=dict(text="Altitude ft", font=dict(color=MUTED, size=10)),
+                        tickfont=dict(color=MUTED, size=9), outlinewidth=0, thickness=10,
+                    ),
+                ),
+                text=frame["label"],
+                customdata=frame[["icao24", "altitude_ft", "speed_kmh", "heading", "nearest_airport", "distance_to_airport_km"]].values,
+                hovertemplate=(
+                    "<b>%{text}</b><br>ICAO24: %{customdata[0]}<br>"
+                    "Altitude: %{customdata[1]:,.0f} ft<br>Speed: %{customdata[2]:,.0f} km/h<br>"
+                    "Heading: %{customdata[3]:.0f}°<br>Nearest gateway: %{customdata[4]} "
+                    "(%{customdata[5]:.0f} km)<extra></extra>"
+                ),
+            ))
+        else:
+            fig.add_annotation(
+                text="No current OpenSky aircraft observations for this filter",
+                x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                font=dict(color=MUTED, size=13),
+            )
+
+        title_scope = f"{airport} vicinity" if airport and airport != "ALL" else country
+        fig.update_layout(
+            paper_bgcolor=CARD, plot_bgcolor=CARD,
+            font=dict(family="DM Sans", color=TEXT),
+            margin=dict(l=0, r=0, t=45, b=0),
+            title=dict(
+                text=f"Live Gulf aircraft · {title_scope}",
+                font=dict(size=13, color=TEXT), x=0, xanchor="left", pad=dict(l=10),
+            ),
+            geo=dict(
+                scope="world", bgcolor=BG, landcolor="#0f1a2e", countrycolor=BORDER,
+                coastlinecolor=BORDER, showcoastlines=True, showlakes=True, lakecolor=BG,
+                projection_type="natural earth", center=dict(lat=24.5, lon=48.5),
+                projection_scale=5.2,
+            ),
+            height=520,
+        )
+        return fig
+
     def risk_gauge(self, probability: float) -> go.Figure:
         GREEN="#10b981"; AMBER="#f59e0b"; RED="#ef4444"
         if probability < 0.3:   color=GREEN; label="LOW RISK"

@@ -613,20 +613,43 @@ def shortest_path(
 @app.get("/live", tags=["Live"])
 def get_live_flights(
     country: Optional[str] = Query(None),
-    limit:   int = Query(50, le=200),
+    airport: Optional[str] = Query(None, min_length=3, max_length=3),
+    max_age_seconds: int = Query(180, ge=30, le=1800),
+    limit:   int = Query(200, le=500),
 ):
-    """Latest live flight positions from MongoDB."""
+    """Latest OpenSky aircraft observations persisted in MongoDB.
+
+    ``market_country`` is assigned by the collector's Saudi/UAE portfolio
+    boundary, while ``nearest_airport`` is a proximity label. Neither field
+    is an official airspace or flight-status classification.
+    """
     try:
-        query = {}
+        from datetime import datetime, timedelta, timezone
+
+        query = {
+            "collected_at_dt": {
+                "$gte": datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+            }
+        }
         if country:
-            query["origin_country"] = country
+            query["market_country"] = country
+        if airport:
+            query["nearest_airport"] = airport.upper()
         docs = list(
             DBClients.mongo()["live_flights"]
-            .find(query, {"_id": 0})
-            .sort("collected_at", -1)
+            .find(query, {"_id": 0, "collected_at_dt": 0})
+            .sort("snapshot_time", -1)
             .limit(limit)
         )
-        return {"data": docs, "count": len(docs)}
+        latest = max((doc.get("snapshot_at") for doc in docs), default=None)
+        return {
+            "data": docs,
+            "count": len(docs),
+            "last_updated": latest,
+            "source": "OpenSky Network",
+            "is_live": bool(docs),
+            "scope_note": "Country uses a portfolio boundary; airport is the nearest supported gateway.",
+        }
     except Exception as e:
         raise HTTPException(500, f"MongoDB error: {e}")
 

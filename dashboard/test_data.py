@@ -27,6 +27,7 @@ from data import (
     GULF_AIRLINES,
     GULF_COUNTRIES,
     _mock,
+    _market_for_position,
     get_gulf_flights_df,
 )
 
@@ -76,10 +77,10 @@ class TestConstants:
     def test_airline_map_not_empty(self):
         assert len(AIRLINE_MAP) > 0
 
-    def test_airline_map_has_common_airlines(self):
-        assert "AA" in AIRLINE_MAP  # American Airlines
-        assert "DL" in AIRLINE_MAP  # Delta
-        assert "UA" in AIRLINE_MAP  # United
+    def test_airline_map_has_gulf_airlines(self):
+        assert AIRLINE_MAP["SV"] == "Saudia"
+        assert AIRLINE_MAP["EK"] == "Emirates"
+        assert AIRLINE_MAP["EY"] == "Etihad Airways"
 
     def test_airlines_sorted(self):
         assert AIRLINES == sorted(AIRLINES)
@@ -87,10 +88,8 @@ class TestConstants:
     def test_airports_not_empty(self):
         assert len(AIRPORTS) > 0
 
-    def test_airports_has_common_airports(self):
-        assert "ATL" in AIRPORTS
-        assert "JFK" in AIRPORTS
-        assert "LAX" in AIRPORTS
+    def test_airports_only_cover_the_gulf_portfolio(self):
+        assert set(AIRPORTS) == {"RUH", "JED", "DMM", "MED", "DXB", "AUH", "SHJ"}
 
 
 class TestGulfPortfolioData:
@@ -115,6 +114,11 @@ class TestGulfPortfolioData:
         frame = get_gulf_flights_df()
         assert not (frame["Origin"] == frame["Dest"]).any()
 
+    def test_live_market_boundaries_exclude_neighboring_country(self):
+        assert _market_for_position(24.71, 46.68) == "Saudi Arabia"
+        assert _market_for_position(25.20, 55.27) == "United Arab Emirates"
+        assert _market_for_position(32.08, 34.78) is None
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # API Client Tests (with mocked requests)
@@ -131,11 +135,11 @@ class TestGetFlightsDf:
             {
                 "flight_id": 1,
                 "flightdate": "2024-01-01",
-                "airline": "AA",
-                "origin": "JFK",
-                "origincityname": "New York, NY",
-                "dest": "LAX",
-                "destcityname": "Los Angeles, CA",
+                "airline": "SV",
+                "origin": "RUH",
+                "origincityname": "Riyadh",
+                "dest": "DXB",
+                "destcityname": "Dubai",
                 "dep_delay": 10.0,
                 "dep_del15": False,
                 "distance": 2475.0,
@@ -160,11 +164,11 @@ class TestGetFlightsDf:
             {
                 "flight_id": 1,
                 "flightdate": "2024-01-01",
-                "airline": "AA",
-                "origin": "JFK",
-                "origincityname": "New York, NY",
-                "dest": "LAX",
-                "destcityname": "Los Angeles, CA",
+                "airline": "SV",
+                "origin": "RUH",
+                "origincityname": "Riyadh",
+                "dest": "DXB",
+                "destcityname": "Dubai",
                 "dep_delay": 10.0,
                 "dep_del15": False,
                 "distance": 2475.0,
@@ -178,7 +182,7 @@ class TestGetFlightsDf:
         mock_get.return_value = mock_response
 
         df = get_flights_df()
-        assert df["Operating_Airline"].iloc[0] == "American Airlines"
+        assert df["Operating_Airline"].iloc[0] == "Saudia"
 
     @patch('data.requests.get')
     def test_adds_month_column(self, mock_get):
@@ -188,11 +192,11 @@ class TestGetFlightsDf:
             {
                 "flight_id": 1,
                 "flightdate": "2024-03-15",
-                "airline": "DL",
-                "origin": "ATL",
-                "origincityname": "Atlanta, GA",
-                "dest": "LAX",
-                "destcityname": "Los Angeles, CA",
+                "airline": "EK",
+                "origin": "DXB",
+                "origincityname": "Dubai",
+                "dest": "JED",
+                "destcityname": "Jeddah",
                 "dep_delay": 5.0,
                 "dep_del15": False,
                 "distance": 1946.0,
@@ -217,11 +221,11 @@ class TestGetFlightsDf:
             {
                 "flight_id": 1,
                 "flightdate": "2024-03-15",
-                "airline": "DL",
-                "origin": "ATL",
-                "origincityname": "Atlanta, GA",
-                "dest": "LAX",
-                "destcityname": "Los Angeles, CA",
+                "airline": "EK",
+                "origin": "DXB",
+                "origincityname": "Dubai",
+                "dest": "JED",
+                "destcityname": "Jeddah",
                 "dep_delay": 5.0,
                 "dep_del15": False,
                 "distance": 1946.0,
@@ -273,7 +277,7 @@ class TestGetAirlinesList:
     def test_returns_list_on_success(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = ["AA", "DL", "UA"]
+        mock_response.json.return_value = ["SV", "EK", "EY"]
         mock_get.return_value = mock_response
 
         result = get_airlines_list()
@@ -284,11 +288,11 @@ class TestGetAirlinesList:
     def test_maps_codes_to_names(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = ["AA"]
+        mock_response.json.return_value = ["SV"]
         mock_get.return_value = mock_response
 
         result = get_airlines_list()
-        assert "American Airlines" in result
+        assert "Saudia" in result
 
     @patch('data.requests.get')
     def test_fallback_on_error(self, mock_get):
@@ -308,7 +312,7 @@ class TestGetOriginsList:
     def test_returns_list(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = ["ATL", "JFK", "LAX"]
+        mock_response.json.return_value = ["RUH", "JED", "DXB"]
         mock_get.return_value = mock_response
 
         result = get_origins_list()
@@ -332,7 +336,7 @@ class TestGetDestinationsList:
     def test_returns_list(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = ["LAX", "SFO", "SEA"]
+        mock_response.json.return_value = ["DXB", "AUH", "SHJ"]
         mock_get.return_value = mock_response
 
         result = get_destinations_list()
@@ -440,19 +444,20 @@ class TestGetLiveFlights:
     """Test get_live_flights() function."""
 
     @patch('data.requests.get')
-    def test_returns_list_on_success(self, mock_get):
+    def test_returns_payload_on_success(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"data": [{"callsign": "TEST123"}]}
         mock_get.return_value = mock_response
 
         result = get_live_flights()
-        assert isinstance(result, list)
+        assert result["data"] == [{"callsign": "TEST123"}]
 
     @patch('data.requests.get')
-    def test_returns_empty_on_error(self, mock_get):
+    def test_returns_unavailable_payload_on_error(self, mock_get):
         import requests
         mock_get.side_effect = requests.exceptions.ConnectionError()
 
         result = get_live_flights()
-        assert result == []
+        assert result["data"] == []
+        assert result["is_live"] is False

@@ -3,36 +3,27 @@ data.py — fetches data from FastAPI endpoints instead of direct PostgreSQL.
 Falls back to mock data if API is unavailable.
 """
 import os
+import time
+from datetime import datetime, timezone
 from math import asin, cos, radians, sin, sqrt
 import pandas as pd
 import numpy as np
 import requests
 
 API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
+GULF_BBOX = {"lamin": 16.0, "lomin": 34.0, "lamax": 33.0, "lomax": 56.5}
 
 AIRLINE_MAP = {
-    "AA":"American Airlines","AS":"Alaska Airlines","B6":"JetBlue Airways",
-    "C5":"CommutAir","DL":"Delta Air Lines","F9":"Frontier Airlines",
-    "G4":"Allegiant Air","G7":"GoJet Airlines","HA":"Hawaiian Airlines",
-    "MQ":"Envoy Air","NK":"Spirit Airlines","OH":"PSA Airlines",
-    "OO":"SkyWest Airlines","PT":"Piedmont Airlines","QX":"Horizon Air",
-    "UA":"United Airlines","WN":"Southwest Airlines","YV":"Mesa Airlines",
-    "YX":"Republic Airways","ZW":"Air Wisconsin","9E":"Endeavor Air",
+    "RX":"Riyadh Air","SV":"Saudia","XY":"flynas",
+    "EK":"Emirates","EY":"Etihad Airways","FZ":"flydubai","G9":"Air Arabia",
 }
 
 AIRLINES = sorted(AIRLINE_MAP.values())
 
 AIRPORTS = {
-    "ATL":"Atlanta","AUS":"Austin","BNA":"Nashville","BOS":"Boston",
-    "BUF":"Buffalo","BWI":"Baltimore","CLT":"Charlotte","CMH":"Columbus",
-    "CVG":"Cincinnati","DCA":"Washington DC","DEN":"Denver","DFW":"Dallas",
-    "DTW":"Detroit","EWR":"Newark","HNL":"Honolulu","IAD":"Dulles",
-    "IAH":"Houston","IND":"Indianapolis","JFK":"New York","LAS":"Las Vegas",
-    "LAX":"Los Angeles","LGA":"LaGuardia","MCO":"Orlando","MDW":"Midway",
-    "MIA":"Miami","MCI":"Kansas City","MKE":"Milwaukee","MSP":"Minneapolis",
-    "OAK":"Oakland","OMA":"Omaha","ORD":"Chicago","PHL":"Philadelphia",
-    "PHX":"Phoenix","PIT":"Pittsburgh","RDU":"Raleigh","SEA":"Seattle",
-    "SFO":"San Francisco","SLC":"Salt Lake City","STL":"St. Louis","TPA":"Tampa",
+    "RUH":"Riyadh","JED":"Jeddah","DMM":"Dammam","MED":"Medina",
+    "DXB":"Dubai","AUH":"Abu Dhabi","SHJ":"Sharjah",
 }
 
 # Gulf portfolio market used by the interactive dashboard demo.
@@ -83,6 +74,19 @@ GULF_AIRPORT_COUNTRY = {
     code: country
     for country, market in GULF_COUNTRIES.items()
     for code in market["airports"]
+}
+
+GULF_MARKET_POLYGONS = {
+    "United Arab Emirates": [
+        (51.4, 24.0), (51.7, 25.4), (53.0, 26.1), (56.4, 26.2),
+        (56.4, 24.0), (55.0, 22.5), (52.3, 22.6),
+    ],
+    "Saudi Arabia": [
+        (34.5, 28.0), (36.0, 32.2), (39.2, 32.1), (42.0, 28.9),
+        (48.0, 29.4), (50.3, 27.0), (50.2, 24.4), (52.0, 22.7),
+        (55.5, 21.8), (55.0, 19.0), (52.0, 16.0), (47.0, 16.0),
+        (43.0, 17.0), (41.0, 19.0), (38.0, 23.0),
+    ],
 }
 
 DELAY_CAUSES = [
@@ -410,16 +414,146 @@ def api_healthy():
         return False
 
 
-def get_live_flights():
-    """Get live flights from MongoDB via API."""
+_LIVE_CACHE = {"fetched_at": 0.0, "payload": None}
+
+
+def _point_in_polygon(latitude, longitude, polygon):
+    inside = False
+    previous = polygon[-1]
+    for current in polygon:
+        x1, y1 = previous
+        x2, y2 = current
+        if (y1 > latitude) != (y2 > latitude):
+            boundary_lon = (x2 - x1) * (latitude - y1) / (y2 - y1) + x1
+            if longitude < boundary_lon:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def _market_for_position(latitude, longitude):
+    for country, polygon in GULF_MARKET_POLYGONS.items():
+        if _point_in_polygon(latitude, longitude, polygon):
+            return country
+    return None
+
+
+def _nearest_gulf_gateway(latitude: float, longitude: float, country: str):
+    candidates = [
+        code for code in GULF_AIRPORT_COORDS if GULF_AIRPORT_COUNTRY[code] == country
+    ]
+    nearest = min(
+        candidates,
+        key=lambda code: _distance_between_coords(
+            latitude, longitude, *GULF_AIRPORT_COORDS[code]
+        ),
+    )
+    distance = _distance_between_coords(
+        latitude, longitude, *GULF_AIRPORT_COORDS[nearest]
+    )
+    return nearest, distance
+
+
+def _distance_between_coords(lat1, lon1, lat2, lon2):
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 6371 * 2 * asin(sqrt(a))
+
+
+def _direct_opensky_payload():
+    """Fetch one cached Gulf snapshot when the FastAPI/Mongo stack is absent."""
+    cache_seconds = max(30, int(os.getenv("OPENSKY_CACHE_SECONDS", "60")))
+    if _LIVE_CACHE["payload"] and time.monotonic() - _LIVE_CACHE["fetched_at"] < cache_seconds:
+        return _LIVE_CACHE["payload"]
+
+    response = requests.get(OPENSKY_STATES_URL, params=GULF_BBOX, timeout=20)
+    response.raise_for_status()
+    raw = response.json()
+    snapshot_time = int(raw.get("time") or time.time())
+    rows = []
+    for state in raw.get("states") or []:
+        values = list(state) + [None] * max(0, 18 - len(state))
+        (
+            icao24, callsign, registration_country, _time_position, last_contact,
+            longitude, latitude, baro_altitude, on_ground, velocity, heading,
+            vertical_rate, _sensors, geo_altitude, _squawk, _spi,
+            _position_source, _category,
+        ) = values[:18]
+        if on_ground is not False or latitude is None or longitude is None:
+            continue
+        market_country = _market_for_position(float(latitude), float(longitude))
+        if market_country is None:
+            continue
+        nearest, distance = _nearest_gulf_gateway(float(latitude), float(longitude), market_country)
+        altitude_m = geo_altitude if geo_altitude is not None else baro_altitude
+        rows.append({
+            "icao24": icao24,
+            "callsign": (callsign or "").strip() or None,
+            "registration_country": registration_country,
+            "longitude": float(longitude),
+            "latitude": float(latitude),
+            "altitude_m": round(float(altitude_m), 1) if altitude_m is not None else None,
+            "altitude_ft": round(float(altitude_m) * 3.28084) if altitude_m is not None else None,
+            "speed_kmh": round(float(velocity) * 3.6, 1) if velocity is not None else None,
+            "heading": heading,
+            "vertical_rate_ms": vertical_rate,
+            "on_ground": False,
+            "airborne": True,
+            "nearest_airport": nearest,
+            "distance_to_airport_km": round(distance, 1),
+            "market_country": market_country,
+            "snapshot_time": snapshot_time,
+            "snapshot_at": datetime.fromtimestamp(snapshot_time, tz=timezone.utc).isoformat(),
+            "last_contact": last_contact,
+            "data_source": "OpenSky Network",
+            "is_live": True,
+        })
+    payload = {
+        "data": rows,
+        "count": len(rows),
+        "last_updated": datetime.fromtimestamp(snapshot_time, tz=timezone.utc).isoformat(),
+        "source": "OpenSky Network (direct fallback)",
+        "is_live": True,
+        "scope_note": "Country uses a portfolio boundary; airport is the nearest supported gateway.",
+    }
+    _LIVE_CACHE.update({"fetched_at": time.monotonic(), "payload": payload})
+    return payload
+
+
+def get_live_flights(country=None, airport=None):
+    """Get live OpenSky aircraft via FastAPI, with a direct read-only fallback."""
+    params = {"limit": 500}
+    if country:
+        params["country"] = country
+    if airport and airport != "ALL":
+        params["airport"] = airport
     try:
         url = f"{API_BASE_URL}/live"
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, params=params, timeout=5)
         if response.status_code == 200:
             result = response.json()
-            return result.get("data", [])
-        else:
-            return []
-    except Exception as e:
-        print(f"Failed to fetch live flights: {e}")
-        return []
+            if result.get("data"):
+                return result
+    except Exception:
+        pass
+
+    try:
+        result = _direct_opensky_payload().copy()
+        rows = result["data"]
+        if country:
+            rows = [row for row in rows if row.get("market_country") == country]
+        if airport and airport != "ALL":
+            rows = [
+                row for row in rows
+                if row.get("nearest_airport") == airport and row.get("distance_to_airport_km", 9999) <= 250
+            ]
+        result["data"] = rows
+        result["count"] = len(rows)
+        return result
+    except Exception as exc:
+        return {
+            "data": [], "count": 0, "last_updated": None,
+            "source": "OpenSky unavailable", "is_live": False,
+            "error": str(exc),
+        }

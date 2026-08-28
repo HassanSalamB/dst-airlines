@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS public.airports (
     iata       VARCHAR(10) PRIMARY KEY,
     airport_id INT,
     city       VARCHAR(100),
-    country    VARCHAR(100) DEFAULT 'United States'
+    country    VARCHAR(100) NOT NULL
 );
 
 -- Reference: airlines
@@ -65,16 +65,15 @@ CREATE TABLE IF NOT EXISTS public.airlines (
     name VARCHAR(100)
 );
 
--- Insert known US airlines
+-- Saudi Arabia and UAE portfolio carriers
 INSERT INTO public.airlines (code, name) VALUES
-    ('AA',  'American Airlines'),
-    ('DL',  'Delta Air Lines'),
-    ('UA',  'United Airlines'),
-    ('WN',  'Southwest Airlines'),
-    ('B6',  'JetBlue Airways'),
-    ('AS',  'Alaska Airlines'),
-    ('NK',  'Spirit Airlines'),
-    ('F9',  'Frontier Airlines')
+    ('RX',  'Riyadh Air'),
+    ('SV',  'Saudia'),
+    ('XY',  'flynas'),
+    ('EK',  'Emirates'),
+    ('EY',  'Etihad Airways'),
+    ('FZ',  'flydubai'),
+    ('G9',  'Air Arabia')
 ON CONFLICT (code) DO NOTHING;
 
 -- Silver view: flights + weather joined

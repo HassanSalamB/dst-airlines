@@ -6,17 +6,15 @@ import requests
 import pandas as pd
 import numpy as np
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
 from data import (
     API_BASE_URL,
-    AIRLINES,
     AIRPORTS,
     GULF_AIRLINES,
     GULF_COUNTRIES,
-    api_healthy,
-    get_flights_df,
     get_gulf_flights_df,
+    get_live_flights,
 )
 from charts import ChartFactory
 from weather import get_weather
@@ -26,15 +24,7 @@ CYAN="#00d4ff"; BLUE="#4a9eff"; PURPLE="#8b5cf6"; GREEN="#10b981"
 AMBER="#f59e0b"; RED="#ef4444"; TEXT="#f1f5f9"; MUTED="#64748b"
 SIDEBAR_W="220px"
 DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-AIRLINE_NAMES={
-    "9E":"9E — Endeavor Air","AA":"AA — American Airlines","AS":"AS — Alaska Airlines",
-    "B6":"B6 — JetBlue","C5":"C5 — CommutAir","DL":"DL — Delta Air Lines",
-    "F9":"F9 — Frontier","G4":"G4 — Allegiant","G7":"G7 — GoJet",
-    "HA":"HA — Hawaiian","MQ":"MQ — Envoy Air","NK":"NK — Spirit",
-    "OH":"OH — PSA Airlines","OO":"OO — SkyWest","PT":"PT — Piedmont",
-    "QX":"QX — Horizon Air","UA":"UA — United Airlines","WN":"WN — Southwest",
-    "YV":"YV — Mesa Airlines","YX":"YX — Republic Airways","ZW":"ZW — Air Wisconsin",
-}
+AIRLINE_NAMES={name:name for name in GULF_AIRLINES}
 CARD_STYLE={"backgroundColor":CARD,"border":f"1px solid {BORDER}","borderRadius":"12px","padding":"20px"}
 DD_STYLE={"backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}","borderRadius":"8px","fontSize":"13px"}
 
@@ -71,10 +61,10 @@ class LB:
 
     @staticmethod
     def sidebar():
-        nav=[("▣","Overview","overview"),("✈","Airlines","airlines"),("⬡","Routes","routes"),
-             ("▲","Trends","trends"),("◈","Risk Analyzer","risk"),
-             ("🗺","Airport Map","map"),
-             ("🕸","Route Graph","graph")]
+        nav=[("◉","Live Airspace","live"),("▣","Market Overview","overview"),
+             ("✈","Airlines","airlines"),("🗺","Airports","map"),
+             ("⬡","Routes","routes"),("▲","Trends","trends"),
+             ("◈","Risk Analyzer","risk"),("⌁","Prediction Lab","predict")]
         links=[html.Div(id=f"nav-{pid}",children=[
             html.Span(icon,style={"width":"20px","display":"inline-block","textAlign":"center","fontSize":"14px","marginRight":"10px","color":CYAN}),
             html.Span(label,style={"fontSize":"13px","whiteSpace":"nowrap","fontWeight":"500"})],
@@ -82,26 +72,11 @@ class LB:
             className="nav-item") for icon,label,pid in nav]
         airline_opts=[{"label":"All Airlines","value":"ALL"}]+[{"label":a,"value":a} for a in GULF_AIRLINES]
         return html.Div([
-            html.Div("NAVIGATION",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"20px 14px 8px"}),
+            html.Div("OPERATIONS VIEWS",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"20px 14px 8px"}),
             *links,
             html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"14px"}),
-            html.Div("FILTERS",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"0 14px 10px"}),
-            html.Div([html.Div("Airline",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                      dcc.Dropdown(id="filter-airline",options=airline_opts,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown")],
-                     style={"padding":"0 10px","marginBottom":"14px"}),
-            html.Div([html.Div("Month Range",style={"color":MUTED,"fontSize":"11px","marginBottom":"8px"}),
-                      dcc.RangeSlider(id="filter-month",min=1,max=12,step=1,value=[1,12],
-                                      marks={1:"Jan",3:"Mar",6:"Jun",9:"Sep",12:"Dec"})],
-                     style={"padding":"0 10px","marginBottom":"14px"}),
-            html.Div([html.Div("Show Only Delayed",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                      dcc.RadioItems(id="filter-delayed",
-                                     options=[{"label":"  All Flights","value":"all"},{"label":"  Delayed Only","value":"delayed"}],
-                                     value="all",style={"color":MUTED,"fontSize":"12px"},
-                                     labelStyle={"display":"block","marginBottom":"4px"})],
-                     style={"padding":"0 10px"}),
-            html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"18px 14px 14px"}),
-            html.Div("GULF MARKET LENS",style={"fontSize":"9px","fontWeight":"700","color":CYAN,"letterSpacing":"2px","padding":"0 14px 6px"}),
-            html.Div("Country → gateway context",style={"fontSize":"10px","color":MUTED,"padding":"0 14px 10px","lineHeight":"1.4"}),
+            html.Div("GULF MARKET",style={"fontSize":"9px","fontWeight":"700","color":CYAN,"letterSpacing":"2px","padding":"0 14px 6px"}),
+            html.Div("Country → airport → airline",style={"fontSize":"10px","color":MUTED,"padding":"0 14px 10px","lineHeight":"1.4"}),
             html.Div([html.Div("Focus Country",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
                       dcc.Dropdown(id="filter-gulf-country",
                                    options=[
@@ -110,9 +85,25 @@ class LB:
                                    ],value="Saudi Arabia",clearable=False,style=DD_STYLE,className="dst-dropdown")],
                      style={"padding":"0 10px","marginBottom":"14px"}),
             html.Div([html.Div("Gateway Airport",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                      dcc.Dropdown(id="filter-gulf-airport",value="RUH",clearable=False,style=DD_STYLE,className="dst-dropdown")],
-                     style={"padding":"0 10px","marginBottom":"8px"}),
-            html.Div("Synthetic portfolio operations · Saudi Arabia & UAE",style={"fontSize":"10px","color":MUTED,"padding":"0 10px","lineHeight":"1.4"}),
+                      dcc.Dropdown(id="filter-gulf-airport",value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown")],
+                     style={"padding":"0 10px","marginBottom":"14px"}),
+            html.Div([html.Div("Airline",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                      dcc.Dropdown(id="filter-airline",options=airline_opts,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown")],
+                     style={"padding":"0 10px","marginBottom":"14px"}),
+            html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"14px"}),
+            html.Div("ANALYTICS WINDOW",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"0 14px 10px"}),
+            html.Div([html.Div("Month Range",style={"color":MUTED,"fontSize":"11px","marginBottom":"8px"}),
+                      dcc.RangeSlider(id="filter-month",min=1,max=12,step=1,value=[1,12],
+                                      marks={1:"Jan",3:"Mar",6:"Jun",9:"Sep",12:"Dec"})],
+                     style={"padding":"0 10px","marginBottom":"14px"}),
+            html.Div([html.Div("Operational Status",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                      dcc.RadioItems(id="filter-delayed",
+                                     options=[{"label":"  All Flights","value":"all"},{"label":"  Delayed Only","value":"delayed"}],
+                                     value="all",style={"color":MUTED,"fontSize":"12px"},
+                                     labelStyle={"display":"block","marginBottom":"4px"})],
+                     style={"padding":"0 10px"}),
+            html.Div("Live positions · OpenSky  |  Weather · Open-Meteo  |  Analytics · portfolio simulation",
+                     style={"fontSize":"9px","color":MUTED,"padding":"16px 10px","lineHeight":"1.5"}),
         ],style={"width":SIDEBAR_W,"minWidth":SIDEBAR_W,"backgroundColor":CARD,"borderRight":f"1px solid {BORDER}",
                  "height":"calc(100vh - 56px)","position":"sticky","top":"56px","overflowY":"auto"})
 
@@ -150,6 +141,40 @@ class LB:
             ],style={"display":"flex","gap":"12px"}),
         ])
 
+    def page_live(self):
+        g={"displayModeBar":False,"scrollZoom":True}
+        columns=[
+            {"name":"Callsign","id":"callsign"},{"name":"ICAO24","id":"icao24"},
+            {"name":"Nearest gateway","id":"nearest_airport"},{"name":"Distance km","id":"distance_to_airport_km"},
+            {"name":"Altitude ft","id":"altitude_ft"},{"name":"Speed km/h","id":"speed_kmh"},
+            {"name":"Heading","id":"heading"},{"name":"Registration country","id":"registration_country"},
+        ]
+        return html.Div([
+            html.Div([
+                html.Div([
+                    html.Div("LIVE AIRSPACE",id="live-status",style={"fontSize":"11px","fontWeight":"700","letterSpacing":"1.5px","color":GREEN}),
+                    html.Div("Current aircraft state vectors over the Gulf focus area",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginTop":"5px"}),
+                    html.Div("OpenSky positions are not schedules, gates, airline delays, or proof of destination.",style={"fontSize":"11px","color":MUTED,"marginTop":"4px"}),
+                ]),
+                html.Div([
+                    html.Div(id="live-count",style={"fontSize":"24px","fontWeight":"700","color":CYAN,"textAlign":"right"}),
+                    html.Div(id="live-updated",style={"fontSize":"10px","color":MUTED,"textAlign":"right"}),
+                ]),
+            ],style={**CARD_STYLE,"display":"flex","justifyContent":"space-between","alignItems":"center","borderLeft":f"3px solid {GREEN}","marginBottom":"12px"}),
+            html.Div(id="live-weather",style={"marginBottom":"12px"}),
+            html.Div([dcc.Graph(id="chart-live-map",config=g,style={"height":"540px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
+            html.Div([
+                html.Div("Aircraft observations",style={"fontSize":"14px","fontWeight":"700","color":TEXT,"marginBottom":"10px"}),
+                dash_table.DataTable(
+                    id="live-table",columns=columns,data=[],page_size=10,sort_action="native",
+                    style_table={"overflowX":"auto"},
+                    style_header={"backgroundColor":SURFACE,"color":MUTED,"border":f"1px solid {BORDER}","fontWeight":"700"},
+                    style_cell={"backgroundColor":CARD,"color":TEXT,"border":f"1px solid {BORDER}","fontSize":"11px","padding":"8px","textAlign":"left"},
+                    style_data_conditional=[{"if":{"row_index":"odd"},"backgroundColor":SURFACE}],
+                ),
+            ],style=CARD_STYLE),
+        ])
+
     def page_airlines(self):
         g={"displayModeBar":False}
         return html.Div([
@@ -161,7 +186,8 @@ class LB:
         g={"displayModeBar":False}
         return html.Div([
             html.Div([dcc.Graph(id="chart-heatmap",config=g,style={"height":"480px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
-            html.Div([dcc.Graph(id="chart-bubble",config=g,style={"height":"420px"})],style=CARD_STYLE),
+            html.Div([dcc.Graph(id="chart-bubble",config=g,style={"height":"420px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
+            self.page_graph(),
         ])
 
     def page_trends(self):
@@ -217,9 +243,9 @@ class LB:
                 html.Div("Select a Saudi or UAE flight — live weather fetched automatically from Open-Meteo API",
                          style={"fontSize":"12px","color":MUTED,"marginBottom":"20px"}),
                 html.Div([
-                    html.Div([dd("Origin Airport","risk-origin",oo,oo[0]["value"] if oo else "ATL"),
-                              dd("Destination Airport","risk-dest",do,do[1]["value"] if len(do)>1 else "LAX")],style={"flex":"1"}),
-                    html.Div([dd("Airline","risk-airline",ao,ao[0]["value"] if ao else "UA"),
+                    html.Div([dd("Origin Airport","risk-origin",oo,oo[0]["value"] if oo else "RUH"),
+                              dd("Destination Airport","risk-dest",do,do[1]["value"] if len(do)>1 else "DXB")],style={"flex":"1"}),
+                    html.Div([dd("Airline","risk-airline",ao,ao[0]["value"] if ao else "Riyadh Air"),
                               dd("Day of Week","risk-day",dopt,"Monday")],style={"flex":"1"}),
                 ],style={"display":"flex","gap":"24px","marginBottom":"16px"}),
                 html.Div(id="weather-preview",style={"marginBottom":"16px"}),
@@ -231,25 +257,31 @@ class LB:
         ])
 
     def page_predict(self):
-        fld=lambda lbl,ph,fid,typ="text": html.Div([
+        fld=lambda lbl,ph,fid,typ="number": html.Div([
             html.Div(lbl,style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
             dcc.Input(id=fid,type=typ,placeholder=ph,debounce=True,style={
                 "width":"100%","backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}",
                 "borderRadius":"8px","padding":"8px 12px","fontSize":"13px","boxSizing":"border-box"})],
             style={"marginBottom":"12px"})
         return html.Div([html.Div([
-            html.Div("Delay Prediction",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginBottom":"4px"}),
-            html.Div("Enter flight & weather details",style={"fontSize":"12px","color":MUTED,"marginBottom":"20px"}),
+            html.Div("Gulf Delay Prediction Lab",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginBottom":"4px"}),
+            html.Div("Scenario estimate trained from the portfolio simulation; it is not official airline status.",style={"fontSize":"12px","color":MUTED,"marginBottom":"20px"}),
             html.Div([
-                html.Div([fld("Origin (IATA)","e.g. JFK","pred-origin"),fld("Dest (IATA)","e.g. LAX","pred-dest"),
-                          fld("Airline","e.g. Delta","pred-airline"),fld("Distance (mi)","e.g. 2475","pred-distance","number")],style={"flex":"1"}),
-                html.Div([fld("Temp (°C)","e.g. 12","pred-temp","number"),fld("Wind (km/h)","e.g. 18","pred-wind","number"),
-                          fld("Precip (mm)","e.g. 0","pred-precip","number"),fld("Cloud (oktas)","e.g. 4","pred-cloud","number")],style={"flex":"1"}),
+                html.Div([
+                    html.Div("Origin",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                    dcc.Dropdown(id="pred-origin",options=[{"label":code,"value":code} for code in GULF_COUNTRIES["Saudi Arabia"]["airports"]|GULF_COUNTRIES["United Arab Emirates"]["airports"]],value="RUH",clearable=False,style=DD_STYLE,className="dst-dropdown"),
+                    html.Div("Destination",style={"color":MUTED,"fontSize":"11px","margin":"12px 0 5px"}),
+                    dcc.Dropdown(id="pred-dest",options=[{"label":code,"value":code} for code in GULF_COUNTRIES["Saudi Arabia"]["airports"]|GULF_COUNTRIES["United Arab Emirates"]["airports"]],value="DXB",clearable=False,style=DD_STYLE,className="dst-dropdown"),
+                    html.Div("Airline",style={"color":MUTED,"fontSize":"11px","margin":"12px 0 5px"}),
+                    dcc.Dropdown(id="pred-airline",options=[{"label":name,"value":name} for name in GULF_AIRLINES],value="Riyadh Air",clearable=False,style=DD_STYLE,className="dst-dropdown"),
+                ],style={"flex":"1"}),
+                html.Div([fld("Departure hour (0–23)","18","pred-hour"),fld("Wind (km/h)","25","pred-wind"),
+                          fld("Precipitation (mm)","0","pred-precip"),fld("Cloud cover (%)","20","pred-cloud")],style={"flex":"1"}),
             ],style={"display":"flex","gap":"24px"}),
-            html.Button("Predict Delay →",id="btn-predict",n_clicks=0,style={
+            html.Button("Run Scenario Prediction →",id="btn-predict",n_clicks=0,style={
                 "backgroundColor":CYAN,"color":BG,"border":"none","borderRadius":"8px",
                 "padding":"10px 28px","fontSize":"13px","fontWeight":"700","cursor":"pointer","marginTop":"8px"}),
-            html.Div(id="predict-result",style={"marginTop":"20px"}),
+            html.Div(id="prediction-result",style={"marginTop":"20px"}),
         ],style={**CARD_STYLE,"maxWidth":"780px"})])
 
 
@@ -283,13 +315,13 @@ class App:
 
         @app.callback(Output("api-badge","children"),Input("tick","n_intervals"))
         def badge(_):
-            c=GREEN; l="● GULF DEMO DATA"
+            c=GREEN; l="● HYBRID GULF DATA"
             return html.Div(l,style={"fontSize":"10px","fontWeight":"700","color":c,"border":f"1px solid {c}","borderRadius":"20px","padding":"3px 10px"})
 
         app.clientside_callback(
-            "function(a,b,c,d,e,f,g,cur){const t=dash_clientside.callback_context.triggered;if(!t||!t.length)return cur;return t[0].prop_id.split('.')[0].replace('nav-','');}",
+            "function(a,b,c,d,e,f,g,h,cur){const t=dash_clientside.callback_context.triggered;if(!t||!t.length)return cur;return t[0].prop_id.split('.')[0].replace('nav-','');}",
             Output("page","data"),
-            [Input(f"nav-{p}","n_clicks") for p in ["overview","airlines","routes","trends","risk","map","graph"]],
+            [Input(f"nav-{p}","n_clicks") for p in ["live","overview","airlines","map","routes","trends","risk","predict"]],
             State("page","data"),prevent_initial_call=True)
 
         def _f(country,airport,airline,months,delayed):
@@ -310,10 +342,12 @@ class App:
                       Input("page","data"),*ins)
         def render(page,country,airport,a,m,d):
             df=_f(country,airport,a,m,d)
-            titles={"overview":"Overview","airlines":"Airline Performance","routes":"Route Analysis",
+            titles={"overview":"Market Overview","airlines":"Airline Performance","routes":"Routes & Connectivity",
                     "trends":"Monthly Trends","risk":"◈ Gulf Flight Risk Analyzer","map":"🗺 Saudi & UAE Airport Map",
-        "graph":"🕸 Route Graph"}
-            pages={"overview":lb.page_overview,"airlines":lb.page_airlines,"routes":lb.page_routes,"trends":lb.page_trends,"map":lb.page_map,"graph":lb.page_graph,}
+                    "live":"◉ Live Gulf Airspace","predict":"⌁ Prediction Lab"}
+            pages={"live":lb.page_live,"overview":lb.page_overview,"airlines":lb.page_airlines,
+                   "routes":lb.page_routes,"trends":lb.page_trends,"map":lb.page_map,
+                   "predict":lb.page_predict}
             content=lb.page_risk(df) if page=="risk" else pages.get(page,lb.page_overview)()
             return content,titles.get(page,"Dashboard")
 
@@ -325,7 +359,7 @@ class App:
         def gulf_airport_options(country):
             if country not in GULF_COUNTRIES:
                 return [], None
-            options = [
+            options = [{"label": "All gateways", "value": "ALL"}] + [
                 {"label": f"{code} — {name}", "value": code}
                 for code, name in GULF_COUNTRIES[country]["airports"].items()
             ]
@@ -359,9 +393,9 @@ class App:
                 html.Div([
                     html.Span(f"{market['flag']}  {country}",style={"fontSize":"14px","fontWeight":"700","color":TEXT}),
                     html.Span(" · ",style={"color":MUTED}),
-                    html.Span(f"{airport or 'All'} · {airport_name}",style={"fontSize":"12px","color":CYAN}),
+                    html.Span(f"{airport if airport != 'ALL' else 'All gateways'} · {airport_name}",style={"fontSize":"12px","color":CYAN}),
                 ]),
-                html.Div(f"{market['focus']} · the KPIs and charts below are filtered to this origin gateway",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
+                html.Div(f"{market['focus']} · shared country, gateway and airline context for every operations view",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
             ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {GREEN}"})
 
         @app.callback(Output("kpi-row","children"),*ins)
@@ -401,6 +435,49 @@ class App:
 
         @app.callback(Output("chart-airport-map","figure"),*ins)
         def c_map(*args): return charts.airport_map(_f(*args))
+
+        @app.callback(
+            Output("chart-live-map","figure"),Output("live-table","data"),
+            Output("live-status","children"),Output("live-status","style"),
+            Output("live-count","children"),Output("live-updated","children"),
+            Output("live-weather","children"),
+            Input("tick","n_intervals"),Input("filter-gulf-country","value"),
+            Input("filter-gulf-airport","value"),
+        )
+        def live_airspace(_, country, airport):
+            payload=get_live_flights(country,airport)
+            rows=payload.get("data",[])
+            is_live=bool(payload.get("is_live"))
+            color=GREEN if is_live else AMBER
+            status="● LIVE · OPENSKY" if is_live else "● LIVE FEED UNAVAILABLE"
+            updated=payload.get("last_updated")
+            if updated:
+                try:
+                    updated=pd.to_datetime(updated,utc=True).strftime("Updated %H:%M:%S UTC")
+                except Exception:
+                    updated=f"Updated {updated}"
+            else:
+                updated="No current snapshot"
+            source=payload.get("source","OpenSky Network")
+            updated=f"{updated} · {source} · dashboard checks every 30s"
+            weather=get_weather(airport) if airport and airport != "ALL" else None
+            if weather:
+                weather_card=html.Div([
+                    html.Div(f"{airport} · LIVE WEATHER",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.2px"}),
+                    html.Div([
+                        html.Span(f"🌡 {weather['temp']}°C"),html.Span(f"💨 {weather['wind_speed']} km/h"),
+                        html.Span(f"🌧 {weather['precip']} mm"),html.Span(f"☁ {weather['cloud_cover']}/8"),
+                    ],style={"display":"flex","gap":"22px","fontSize":"12px","color":TEXT,"marginTop":"8px"}),
+                    html.Div("Source: Open-Meteo",style={"fontSize":"9px","color":MUTED,"marginTop":"6px"}),
+                ],style={**CARD_STYLE,"padding":"14px 18px","borderLeft":f"3px solid {CYAN}"})
+            else:
+                weather_card=html.Div("Select a gateway airport to add current Open-Meteo weather.",style={**CARD_STYLE,"fontSize":"11px","color":MUTED})
+            table_rows=[{key:row.get(key) for key in ["callsign","icao24","nearest_airport","distance_to_airport_km","altitude_ft","speed_kmh","heading","registration_country"]} for row in rows]
+            return (
+                charts.live_aircraft_map(rows,country,airport),table_rows,status,
+                {"fontSize":"11px","fontWeight":"700","letterSpacing":"1.5px","color":color},
+                f"{len(rows)} aircraft",updated,weather_card,
+            )
 
         @app.callback(
             Output("graph-result","children"),
@@ -506,6 +583,34 @@ class App:
                     ],style={"flex":"1","padding":"20px 0"}),
                 ],style={"display":"flex","gap":"24px","alignItems":"center"}),
             ],style={**CARD_STYLE,"borderTop":f"3px solid {rc}","marginBottom":"12px"})
+
+        @app.callback(
+            Output("prediction-result","children"),Input("btn-predict","n_clicks"),
+            State("pred-origin","value"),State("pred-dest","value"),State("pred-airline","value"),
+            State("pred-hour","value"),State("pred-wind","value"),State("pred-precip","value"),State("pred-cloud","value"),
+            prevent_initial_call=True,
+        )
+        def predict_scenario(_,origin,dest,airline,hour,wind,precip,cloud):
+            if origin==dest:
+                return html.Div("Select two different Gulf airports.",style={"color":AMBER})
+            if any(value is None for value in [hour,wind,precip,cloud]):
+                return html.Div("Enter all four operating-condition inputs.",style={"color":AMBER})
+            frame=get_gulf_flights_df()
+            route=frame[(frame["Origin"]==origin)&(frame["Dest"]==dest)]
+            carrier=frame[frame["Operating_Airline"]==airline]
+            baseline=float(route["Delayed"].mean() if not route.empty else frame["Delayed"].mean())
+            carrier_rate=float(carrier["Delayed"].mean() if not carrier.empty else baseline)
+            peak_adjust=0.08 if int(hour) in [6,7,8,17,18,19,20] else 0
+            weather_adjust=min(0.30,float(wind)/400+float(precip)/60+float(cloud)/1000)
+            probability=max(0.03,min(0.92,baseline*0.55+carrier_rate*0.25+peak_adjust+weather_adjust))
+            color=GREEN if probability<0.30 else AMBER if probability<0.60 else RED
+            label="LOW" if probability<0.30 else "MEDIUM" if probability<0.60 else "HIGH"
+            return html.Div([
+                html.Div(f"{label} DELAY RISK",style={"fontSize":"11px","fontWeight":"700","letterSpacing":"1.4px","color":color}),
+                html.Div(f"{probability*100:.1f}%",style={"fontSize":"38px","fontWeight":"700","color":color,"margin":"5px 0"}),
+                html.Div(f"{airline} · {origin} → {dest} · departure hour {int(hour):02d}:00",style={"fontSize":"12px","color":TEXT}),
+                html.Div("Scenario estimate combines simulated route/carrier history with your weather and peak-hour inputs. Not an official flight prediction.",style={"fontSize":"10px","color":MUTED,"marginTop":"8px"}),
+            ],style={**CARD_STYLE,"borderLeft":f"3px solid {color}"})
 
 
 

@@ -2,10 +2,8 @@
 
 **LIORA DataOps Project | June 2026 Batch**
 
-Flight-delay analytics platform built with FastAPI, Dash, PostgreSQL, MongoDB,
-Neo4j, Docker, Kubernetes, GitHub Actions, Terraform, Prometheus, and Grafana.
-
-[![CI/CD](https://github.com/kboroz/dst-airlines-DataOps/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/kboroz/dst-airlines-DataOps/actions/workflows/ci-cd.yml)
+Saudi Arabia and UAE flight-operations portfolio built with FastAPI, Dash,
+Kafka, PostgreSQL, MongoDB, Neo4j, Docker, Terraform, Prometheus, and Grafana.
 
 ## Project status and ownership
 
@@ -21,7 +19,7 @@ deployment but is not a continuously hosted development or production system.
 |---|---|---|---|
 | 1 | Docker | Ali Doghan and Hassan Salam Banayeem | Implemented |
 | 2 | Dev and production configuration | Ali Doghan and Hassan Salam Banayeem | Compose configurations implemented; persistent environments pending |
-| 3 | Testing | Hassan Salam Banayeem | 47 API and 34 dashboard tests |
+| 3 | Testing | Hassan Salam Banayeem | 47 API, 39 dashboard, and 3 live-collector tests |
 | 4 | Kubernetes | Ali Doghan | Manifests and reusable deployment script; Kind validated |
 | 5 | CI/CD | Hassan Salam Banayeem | Test, Terraform validation, build, GHCR, Trivy, Kind, smoke tests |
 | 6 | Infrastructure as Code | Ali Doghan | Terraform for local Docker or Docker on a Proxmox guest through SSH |
@@ -34,10 +32,11 @@ deployment but is not a continuously hosted development or production system.
 
 ```mermaid
 flowchart LR
-    source["Flight data and live APIs"] --> collector["Python collector and setup scripts"]
-    collector --> pg[("PostgreSQL<br/>bronze / silver / gold")]
-    collector --> mongo[("MongoDB<br/>live and flexible data")]
-    collector --> neo4j[("Neo4j<br/>airport route graph")]
+    simulation["Saudi/UAE portfolio simulation"] --> pg[("PostgreSQL<br/>analytics")]
+    simulation --> neo4j[("Neo4j<br/>airport route graph")]
+    opensky["OpenSky state vectors"] --> collector["Python Gulf collector"]
+    collector --> kafka["Kafka<br/>gulf.live_flights"]
+    kafka --> mongo[("MongoDB<br/>live_flights")]
 
     pg --> api["FastAPI<br/>16 routes"]
     mongo --> api
@@ -49,9 +48,11 @@ flowchart LR
     grafana["Grafana"] --> prometheus
 ```
 
-FastAPI connects to PostgreSQL, MongoDB, and Neo4j. The dashboard reads
-application data through FastAPI and calls Open-Meteo for live weather.
-Prometheus scrapes API metrics and Grafana visualizes them.
+FastAPI connects to PostgreSQL, MongoDB, and Neo4j. Dash reads current aircraft
+observations through FastAPI and calls Open-Meteo for gateway weather. If the
+local data stack is intentionally absent, the dashboard can read one cached
+OpenSky snapshot directly. OpenSky positions are not commercial schedules,
+gates, cancellations, or official delay data.
 
 ## Technology stack
 
@@ -60,6 +61,7 @@ Prometheus scrapes API metrics and Grafana visualizes them.
 | API | Python 3.11, FastAPI, Uvicorn |
 | Dashboard | Dash, Plotly, Dash Bootstrap Components |
 | Data and ML | pandas, scikit-learn, Logistic Regression, Linear Regression |
+| Streaming | Apache Kafka, OpenSky state-vector collector |
 | Databases | PostgreSQL 16, MongoDB 7, Neo4j 5 |
 | Containers | Docker and Docker Compose |
 | Orchestration | Kubernetes; Kind in CI and Minikube locally |
@@ -76,7 +78,7 @@ Prometheus scrapes API metrics and Grafana visualizes them.
 │   ├── dependabot.yml
 │   └── workflows/ci-cd.yml
 ├── api/                            # FastAPI, tests, and Dockerfiles
-├── collector/                      # Batch and OpenSky collectors
+├── collector/                      # OpenSky → Kafka → MongoDB live pipeline
 ├── dashboard/                      # Dash UI, charts, weather, ML, and tests
 ├── database/                       # Setup code and SQL schema/test fixtures
 ├── docs/CI_CD.md                   # CI/CD implementation details
@@ -102,11 +104,9 @@ Prometheus scrapes API metrics and Grafana visualizes them.
 
 ## Credentials and configuration
 
-For coursework convenience, this repository includes `.env.dev`, `.env.prod`,
-and `terraform/terraform.tfvars`. The development and Terraform files contain
-shared demo credentials; `.env.prod` contains replacement placeholders. These
-values make local demonstrations easier, but they are public once committed to
-Git and must never be reused for an Internet-facing or real production system.
+Runtime `.env.dev`, `.env.prod`, and `terraform/terraform.tfvars` files are local
+and ignored by Git. Only placeholder examples are tracked. Never commit real
+database, OpenSky OAuth, registry, or infrastructure credentials.
 
 For production, create private runtime files from the provided examples,
 replace every placeholder with a unique strong value, and keep the resulting
@@ -218,11 +218,12 @@ Use `down --volumes` only when deleting the local database data is intentional.
 
 ## Tests
 
-The repository contains 81 tests:
+The repository contains 89 tests:
 
 - 47 FastAPI endpoint tests using PostgreSQL initialized from
   `database/sql/init.sql` and `database/sql/test_seed.sql`
-- 34 dashboard data-layer tests using mocked HTTP responses and fallback data
+- 39 dashboard data-layer tests using mocked HTTP responses and Gulf fallback data
+- 3 Gulf live-collector normalization and boundary tests
 
 Install dependencies:
 
@@ -248,7 +249,7 @@ coverage threshold, or load tests yet.
 
 ```mermaid
 flowchart TD
-    trigger["Pull request, push, or manual run"] --> tests["PostgreSQL + 81 tests"]
+    trigger["Pull request, push, or manual run"] --> tests["PostgreSQL + application tests"]
     trigger --> terraform["Terraform format and validation"]
     tests --> build["Build API and dashboard images"]
     terraform --> build
@@ -272,7 +273,7 @@ Triggers:
 Pipeline behavior:
 
 1. Start PostgreSQL 16 and load deterministic test data.
-2. Run all 81 application tests.
+2. Run all application tests.
 3. Check Terraform formatting, initialize providers, and validate configuration.
 4. Build API and dashboard images with Docker Buildx.
 5. On non-pull-request runs, publish immutable SHA tags to GHCR.
@@ -378,13 +379,8 @@ Step 6 when Terraform defines that environment, and Step 5 only if CI/CD is
 later configured to deploy to it. Running Docker on Proxmox does not replace
 the Step 4 Kubernetes requirement; the existing Kind validation covers Step 4.
 
-Verified live endpoints (31 July 2026):
-
-- Dashboard: [http://51.158.200.169:8050](http://51.158.200.169:8050)
-- API: [http://51.158.200.169:8000](http://51.158.200.169:8000)
-
-Both endpoints returned HTTP 200 during verification. The deployment is a
-public demonstration over HTTP, not a hardened production environment.
+No public endpoint is claimed by this branch. The current implementation is
+kept local until a separate publishing decision is made.
 
 ### Terraform credentials and run commands
 

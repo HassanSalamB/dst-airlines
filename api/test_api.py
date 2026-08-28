@@ -77,25 +77,25 @@ class TestDashboardFlights:
                 assert col in flight, f"Missing column: {col}"
 
     def test_flights_filter_by_airline(self):
-        response = client.get("/api/flights?airline=AA&limit=5")
+        response = client.get("/api/flights?airline=SV&limit=5")
         data = response.json()
         if len(data) > 0:
             for flight in data:
-                assert flight["airline"] == "AA"
+                assert flight["airline"] == "SV"
 
     def test_flights_filter_by_origin(self):
-        response = client.get("/api/flights?origin=JFK&limit=5")
+        response = client.get("/api/flights?origin=RUH&limit=5")
         data = response.json()
         if len(data) > 0:
             for flight in data:
-                assert flight["origin"] == "JFK"
+                assert flight["origin"] == "RUH"
 
     def test_flights_filter_by_dest(self):
-        response = client.get("/api/flights?dest=LAX&limit=5")
+        response = client.get("/api/flights?dest=DXB&limit=5")
         data = response.json()
         if len(data) > 0:
             for flight in data:
-                assert flight["dest"] == "LAX"
+                assert flight["dest"] == "DXB"
 
     def test_flights_max_limit(self):
         response = client.get("/api/flights?limit=200001")
@@ -180,17 +180,17 @@ class TestDashboardDestinations:
         assert len(data) > 0
 
     def test_destinations_filter_by_airline(self):
-        response = client.get("/api/destinations?airline=DL")
+        response = client.get("/api/destinations?airline=EK")
         data = response.json()
         assert isinstance(data, list)
 
     def test_destinations_filter_by_origin(self):
-        response = client.get("/api/destinations?origin=ATL")
+        response = client.get("/api/destinations?origin=RUH")
         data = response.json()
         assert isinstance(data, list)
 
     def test_destinations_filter_by_both(self):
-        response = client.get("/api/destinations?airline=AA&origin=JFK")
+        response = client.get("/api/destinations?airline=SV&origin=JED")
         data = response.json()
         assert isinstance(data, list)
 
@@ -283,7 +283,7 @@ class TestAirportByIata:
     """Test GET /airports/{iata} endpoint."""
 
     def test_airport_returns_200(self):
-        response = client.get("/airports/ATL")
+        response = client.get("/airports/RUH")
         # Could be 200 or 404 depending on data
         assert response.status_code in [200, 404]
 

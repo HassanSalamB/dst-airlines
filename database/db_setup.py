@@ -120,7 +120,7 @@ class PostgreSQLSetup:
             iata        VARCHAR(10) PRIMARY KEY,
             airport_id  INT,
             city        VARCHAR(100),
-            country     VARCHAR(100) DEFAULT 'United States'
+            country     VARCHAR(100) NOT NULL
         );
 
         DROP TABLE IF EXISTS public.airlines CASCADE;
@@ -308,7 +308,7 @@ class Neo4jSetup:
     Neo4j stores flight routes as a graph:
     (Airport)-[:ROUTE {flights, avg_delay, distance}]->(Airport)
     This lets us query things like:
-    - "Shortest path from JFK to LAX"
+    - "Shortest path from RUH to DXB"
     - "Which airports have the most delays?"
     - "Find all connecting airports between A and B"
     """
@@ -356,11 +356,11 @@ class Neo4jSetup:
         else:
             # Sample data if CSV not available
             df = pd.DataFrame({
-                "Origin": ["JFK", "LAX", "ORD", "ATL", "DFW"],
-                "Dest":   ["LAX", "JFK", "ATL", "ORD", "JFK"],
-                "OriginCityName": ["New York", "Los Angeles", "Chicago", "Atlanta", "Dallas"],
-                "DestCityName":   ["Los Angeles", "New York", "Atlanta", "Chicago", "New York"],
-                "Distance": [2475, 2475, 674, 674, 1389],
+                "Origin": ["RUH", "DXB", "JED", "AUH", "DMM"],
+                "Dest":   ["DXB", "RUH", "AUH", "JED", "SHJ"],
+                "OriginCityName": ["Riyadh", "Dubai", "Jeddah", "Abu Dhabi", "Dammam"],
+                "DestCityName":   ["Dubai", "Riyadh", "Abu Dhabi", "Jeddah", "Sharjah"],
+                "Distance": [545, 545, 1000, 1000, 530],
                 "DepDelay": [12.5, 8.3, 15.2, 9.1, 11.7],
                 "DepDel15": [True, False, True, False, True],
             })
