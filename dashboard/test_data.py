@@ -24,7 +24,10 @@ from data import (
     AIRLINE_MAP,
     AIRLINES,
     AIRPORTS,
+    GULF_AIRLINES,
+    GULF_COUNTRIES,
     _mock,
+    get_gulf_flights_df,
 )
 
 
@@ -88,6 +91,29 @@ class TestConstants:
         assert "ATL" in AIRPORTS
         assert "JFK" in AIRPORTS
         assert "LAX" in AIRPORTS
+
+
+class TestGulfPortfolioData:
+    """Validate the Saudi Arabia and UAE dashboard dataset."""
+
+    def test_only_requested_gulf_markets_are_available(self):
+        assert set(GULF_COUNTRIES) == {"Saudi Arabia", "United Arab Emirates"}
+
+    def test_gulf_dataset_has_operational_rows(self):
+        frame = get_gulf_flights_df()
+        assert len(frame) == 6000
+        assert set(frame["OriginCountry"]) == set(GULF_COUNTRIES)
+        assert set(frame["Operating_Airline"]).issubset(set(GULF_AIRLINES))
+
+    def test_country_and_gateway_filters_drive_the_data(self):
+        frame = get_gulf_flights_df("Saudi Arabia", "RUH")
+        assert not frame.empty
+        assert set(frame["OriginCountry"]) == {"Saudi Arabia"}
+        assert set(frame["Origin"]) == {"RUH"}
+
+    def test_gulf_routes_never_connect_an_airport_to_itself(self):
+        frame = get_gulf_flights_df()
+        assert not (frame["Origin"] == frame["Dest"]).any()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

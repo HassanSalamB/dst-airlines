@@ -290,7 +290,7 @@ class ChartFactory:
         return fig
 
     def airport_map(self, df: pd.DataFrame) -> go.Figure:
-        """Interactive US airport map — bubble size = flights, color = delay rate."""
+        """Interactive Gulf airport map — bubble size = flights, color = delay rate."""
         from weather import AIRPORT_COORDS
 
         grp = (df.groupby("Origin")
@@ -340,10 +340,10 @@ class ChartFactory:
             plot_bgcolor=CARD,
             font=dict(family="DM Sans", color=TEXT),
             margin=dict(l=0, r=0, t=40, b=0),
-            title=dict(text="US Airport Delay Map — bubble size = flight volume · color = delay rate",
+            title=dict(text="Saudi Arabia & UAE Airport Delay Map — bubble size = flight volume · color = delay rate",
                       font=dict(size=13, color=TEXT), x=0, xanchor="left", pad=dict(l=10)),
             geo=dict(
-                scope="usa",
+                scope="world",
                 bgcolor=BG,
                 landcolor="#0f1a2e",
                 subunitcolor=BORDER,
@@ -352,7 +352,9 @@ class ChartFactory:
                 lakecolor=BG,
                 showcoastlines=True,
                 coastlinecolor=BORDER,
-                projection_type="albers usa",
+                projection_type="natural earth",
+                center=dict(lat=24.5, lon=48.5),
+                projection_scale=5.2,
             ),
             height=480,
         )

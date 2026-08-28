@@ -3,6 +3,7 @@ data.py — fetches data from FastAPI endpoints instead of direct PostgreSQL.
 Falls back to mock data if API is unavailable.
 """
 import os
+from math import asin, cos, radians, sin, sqrt
 import pandas as pd
 import numpy as np
 import requests
@@ -34,10 +35,7 @@ AIRPORTS = {
     "SFO":"San Francisco","SLC":"Salt Lake City","STL":"St. Louis","TPA":"Tampa",
 }
 
-# Gulf market reference layer used by the dashboard's network-planning lens.
-# The operational sample remains the original US flight dataset; these gateways
-# are intentionally presented as contextual market selections, not fabricated
-# delay observations.
+# Gulf portfolio market used by the interactive dashboard demo.
 GULF_COUNTRIES = {
     "Saudi Arabia": {
         "flag": "🇸🇦",
@@ -47,7 +45,8 @@ GULF_COUNTRIES = {
             "DMM": "King Fahd International · Dammam",
             "MED": "Prince Mohammad bin Abdulaziz · Medina",
         },
-        "focus": "Riyadh Air market context",
+        "focus": "Riyadh Air network showcase",
+        "airlines": ["Riyadh Air", "Saudia", "flynas"],
     },
     "United Arab Emirates": {
         "flag": "🇦🇪",
@@ -56,31 +55,34 @@ GULF_COUNTRIES = {
             "AUH": "Zayed International · Abu Dhabi",
             "SHJ": "Sharjah International · Sharjah",
         },
-        "focus": "Emirates market context",
+        "focus": "Emirates network showcase",
+        "airlines": ["Emirates", "Etihad Airways", "flydubai", "Air Arabia"],
     },
-    "Qatar": {
-        "flag": "🇶🇦",
-        "airports": {"DOH": "Hamad International · Doha"},
-        "focus": "Qatar Airways market context",
-    },
-    "Bahrain": {
-        "flag": "🇧🇭",
-        "airports": {"BAH": "Bahrain International · Manama"},
-        "focus": "Gulf Air market context",
-    },
-    "Kuwait": {
-        "flag": "🇰🇼",
-        "airports": {"KWI": "Kuwait International · Kuwait City"},
-        "focus": "Kuwait Airways market context",
-    },
-    "Oman": {
-        "flag": "🇴🇲",
-        "airports": {
-            "MCT": "Muscat International · Muscat",
-            "SLL": "Salalah International · Salalah",
-        },
-        "focus": "Oman Air market context",
-    },
+}
+
+GULF_AIRPORT_COORDS = {
+    "RUH": (24.9576, 46.6988), "JED": (21.6702, 39.1528),
+    "DMM": (26.4712, 49.7979), "MED": (24.5534, 39.7051),
+    "DXB": (25.2532, 55.3657), "AUH": (24.4330, 54.6511),
+    "SHJ": (25.3286, 55.5172),
+}
+
+GULF_AIRLINES = sorted({
+    airline
+    for market in GULF_COUNTRIES.values()
+    for airline in market["airlines"]
+})
+
+GULF_AIRPORTS = {
+    code: name
+    for market in GULF_COUNTRIES.values()
+    for code, name in market["airports"].items()
+}
+
+GULF_AIRPORT_COUNTRY = {
+    code: country
+    for country, market in GULF_COUNTRIES.items()
+    for code in market["airports"]
 }
 
 DELAY_CAUSES = [
@@ -116,6 +118,97 @@ def _mock(n=2000):
     return df
 
 _MOCK = _mock()
+
+
+def _distance_miles(origin: str, destination: str) -> int:
+    """Return the great-circle distance between two Gulf airports."""
+    lat1, lon1 = GULF_AIRPORT_COORDS[origin]
+    lat2, lon2 = GULF_AIRPORT_COORDS[destination]
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return int(3959 * 2 * asin(sqrt(a)))
+
+
+def _gulf_mock(n=6000):
+    """Generate deterministic Saudi/UAE portfolio flight operations data."""
+    rng = np.random.default_rng(2030)
+    airports = list(GULF_AIRPORTS)
+    origin_weights = np.array([0.24, 0.18, 0.10, 0.05, 0.23, 0.13, 0.07])
+    origins = rng.choice(airports, size=n, p=origin_weights)
+
+    destinations = []
+    for origin in origins:
+        candidates = [airport for airport in airports if airport != origin]
+        # Prefer cross-border routes while retaining domestic network coverage.
+        cross_border = [
+            airport for airport in candidates
+            if GULF_AIRPORT_COUNTRY[airport] != GULF_AIRPORT_COUNTRY[origin]
+        ]
+        domestic = [airport for airport in candidates if airport not in cross_border]
+        pool = cross_border if rng.random() < 0.62 or not domestic else domestic
+        destinations.append(rng.choice(pool))
+
+    country_airline_weights = {
+        "Saudi Arabia": [0.30, 0.45, 0.25],
+        "United Arab Emirates": [0.38, 0.25, 0.22, 0.15],
+    }
+    airlines = [
+        rng.choice(
+            GULF_COUNTRIES[GULF_AIRPORT_COUNTRY[origin]]["airlines"],
+            p=country_airline_weights[GULF_AIRPORT_COUNTRY[origin]],
+        )
+        for origin in origins
+    ]
+
+    dates = rng.choice(pd.date_range("2025-01-01", "2025-12-31", freq="D"), size=n)
+    airport_delay = {"RUH": 6, "JED": 9, "DMM": 5, "MED": 4, "DXB": 11, "AUH": 7, "SHJ": 8}
+    airline_delay = {
+        "Riyadh Air": -1.5, "Saudia": 1.0, "flynas": 2.5,
+        "Emirates": 0.5, "Etihad Airways": -0.5, "flydubai": 2.0, "Air Arabia": 2.5,
+    }
+    base_delay = np.array([airport_delay[airport] for airport in origins], dtype=float)
+    base_delay += np.array([airline_delay[airline] for airline in airlines])
+    disruption = rng.binomial(1, 0.17, n) * rng.exponential(28, n)
+    dep_delay = np.round(np.clip(base_delay + rng.normal(0, 10, n) + disruption, -20, 180), 1)
+    delayed = (dep_delay > 15).astype(int)
+    positive_delay = np.clip(dep_delay, 0, None)
+
+    frame = pd.DataFrame({
+        "FlightDate": pd.to_datetime(dates),
+        "Operating_Airline": airlines,
+        "Origin": origins,
+        "Dest": destinations,
+        "OriginCity": [GULF_AIRPORTS[airport].split(" · ")[-1] for airport in origins],
+        "DestCity": [GULF_AIRPORTS[airport].split(" · ")[-1] for airport in destinations],
+        "OriginCountry": [GULF_AIRPORT_COUNTRY[airport] for airport in origins],
+        "DestCountry": [GULF_AIRPORT_COUNTRY[airport] for airport in destinations],
+        "Distance": [_distance_miles(origin, destination) for origin, destination in zip(origins, destinations)],
+        "DepDelay": dep_delay,
+        "ArrDelay": np.round(np.clip(dep_delay + rng.normal(-2, 5, n), -30, 190), 1),
+        "Delayed": delayed,
+        "CarrierDelay": np.round(np.where(delayed, positive_delay * rng.uniform(0.25, 0.45, n), 0), 1),
+        "WeatherDelay": np.round(np.where(delayed, positive_delay * rng.uniform(0.08, 0.22, n), 0), 1),
+        "NASDelay": np.round(np.where(delayed, positive_delay * rng.uniform(0.12, 0.28, n), 0), 1),
+        "SecurityDelay": np.round(np.where(delayed, positive_delay * rng.uniform(0.00, 0.04, n), 0), 1),
+        "LateAircraftDelay": np.round(np.where(delayed, positive_delay * rng.uniform(0.18, 0.38, n), 0), 1),
+    })
+    frame["Month"] = frame["FlightDate"].dt.month
+    frame["DayOfWeek"] = frame["FlightDate"].dt.day_name()
+    return frame.sort_values("FlightDate").reset_index(drop=True)
+
+
+_GULF_MOCK = _gulf_mock()
+
+
+def get_gulf_flights_df(country=None, airport=None):
+    """Return the Gulf portfolio dataset filtered by origin market and gateway."""
+    frame = _GULF_MOCK.copy()
+    if country and country != "ALL":
+        frame = frame[frame["OriginCountry"] == country]
+    if airport and airport != "ALL":
+        frame = frame[frame["Origin"] == airport]
+    return frame.reset_index(drop=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
