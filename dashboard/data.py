@@ -5,7 +5,7 @@ Falls back to mock data if API is unavailable.
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from math import asin, cos, radians, sin, sqrt
 import pandas as pd
 import numpy as np
@@ -19,6 +19,16 @@ GULF_BBOX = {"lamin": 16.0, "lomin": 34.0, "lamax": 33.0, "lomax": 56.5}
 AIRLINE_MAP = {
     "RX":"Riyadh Air","SV":"Saudia","XY":"flynas",
     "EK":"Emirates","EY":"Etihad Airways","FZ":"flydubai","G9":"Air Arabia",
+}
+
+LIVE_CALLSIGN_PREFIX_AIRLINES = {
+    "RXI": "Riyadh Air", "RX": "Riyadh Air",
+    "SVA": "Saudia", "SV": "Saudia",
+    "KNE": "flynas", "XY": "flynas",
+    "UAE": "Emirates", "EK": "Emirates",
+    "ETD": "Etihad Airways", "EY": "Etihad Airways",
+    "FDB": "flydubai", "FZ": "flydubai",
+    "ABY": "Air Arabia", "G9": "Air Arabia",
 }
 
 AIRLINES = sorted(AIRLINE_MAP.values())
@@ -66,7 +76,13 @@ GULF_AIRLINES = sorted({
     for airline in market["airlines"]
 })
 
-GULF_ANALYTICS_YEARS = [2023, 2024, 2025]
+GULF_ANALYTICS_YEARS = [2023, 2024, 2025, 2026]
+_GULF_ANALYTICS_TODAY = datetime.now(timezone.utc).date()
+_GULF_ANALYTICS_MIN_END = date(GULF_ANALYTICS_YEARS[-1], 1, 1)
+_GULF_ANALYTICS_MAX_END = date(GULF_ANALYTICS_YEARS[-1], 12, 31)
+GULF_ANALYTICS_END_DATE = pd.Timestamp(
+    min(max(_GULF_ANALYTICS_TODAY, _GULF_ANALYTICS_MIN_END), _GULF_ANALYTICS_MAX_END)
+)
 
 GULF_AIRPORTS = {
     code: name
@@ -179,7 +195,7 @@ def _gulf_mock(n=6000):
     dates = rng.choice(
         pd.date_range(
             f"{GULF_ANALYTICS_YEARS[0]}-01-01",
-            f"{GULF_ANALYTICS_YEARS[-1]}-12-31",
+            GULF_ANALYTICS_END_DATE,
             freq="D",
         ),
         size=n,
@@ -569,6 +585,14 @@ def _route_for_callsign(callsign):
     return route
 
 
+def _airline_from_callsign(callsign):
+    cleaned = "".join(character for character in (callsign or "").upper() if character.isalnum())
+    for prefix, airline in sorted(LIVE_CALLSIGN_PREFIX_AIRLINES.items(), key=lambda item: len(item[0]), reverse=True):
+        if cleaned.startswith(prefix):
+            return airline
+    return "Unknown"
+
+
 def _airport_label(airport):
     if not airport:
         return "Not available"
@@ -606,6 +630,7 @@ def _enrich_live_routes(rows):
         route = routes.get(callsign) or (_ROUTE_CACHE.get(callsign) or {}).get("route")
         origin = route.get("origin") if route else None
         destination = route.get("destination") if route else None
+        row["airline"] = row.get("airline") or _airline_from_callsign(callsign)
         row["origin"] = _airport_label(origin) if origin else "Not available"
         row["destination"] = _airport_label(destination) if destination else "Not available"
         row["origin_latitude"] = _airport_coordinate(origin, "latitude")

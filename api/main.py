@@ -117,6 +117,41 @@ def get_gulf_model_bundle():
     return _gulf_model_bundle
 
 
+def gulf_model_reliability(metadata: dict) -> dict:
+    champion = metadata.get("champion", "")
+    metrics = metadata.get("metrics", {}).get(champion, {})
+    roc_auc = float(metrics.get("roc_auc", 0))
+    pr_auc = float(metrics.get("pr_auc", 0))
+    brier = float(metrics.get("brier", 1))
+    calibration_points = metadata.get("calibration", [])
+    calibration_gap = np.mean([
+        abs(float(point["predicted"]) - float(point["observed"]))
+        for point in calibration_points
+        if "predicted" in point and "observed" in point
+    ]) if calibration_points else 1
+    score = round(100 * (
+        0.40 * roc_auc
+        + 0.20 * pr_auc
+        + 0.20 * max(0, 1 - min(brier, 1))
+        + 0.20 * max(0, 1 - min(float(calibration_gap), 1))
+    ))
+    if score >= 80:
+        label = "strong portfolio signal"
+    elif score >= 65:
+        label = "moderate portfolio signal"
+    else:
+        label = "experimental portfolio signal"
+    return {
+        "reliability_score": int(score),
+        "reliability_label": label,
+        "calibration_gap": round(float(calibration_gap), 4),
+        "reliability_note": (
+            "Score combines ROC-AUC, PR-AUC, Brier probability error and "
+            "calibration gap on the 2025 simulation test set."
+        ),
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Pydantic schemas
 # ═══════════════════════════════════════════════════════════════════════════
@@ -716,7 +751,9 @@ def gulf_model_status():
             "version": None,
             "reason": "Model artifact is not available",
         }
-    return bundle["metadata"]
+    metadata = dict(bundle["metadata"])
+    metadata.update(gulf_model_reliability(metadata))
+    return metadata
 
 
 @app.post("/predict/gulf", response_model=GulfPredictionResponse, tags=["ML"])

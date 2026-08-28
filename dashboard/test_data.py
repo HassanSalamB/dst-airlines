@@ -25,6 +25,7 @@ from data import (
     AIRLINES,
     AIRPORTS,
     GULF_AIRLINES,
+    GULF_ANALYTICS_END_DATE,
     GULF_ANALYTICS_YEARS,
     GULF_COUNTRIES,
     _enrich_live_routes,
@@ -106,10 +107,12 @@ class TestGulfPortfolioData:
         assert set(frame["OriginCountry"]) == set(GULF_COUNTRIES)
         assert set(frame["Operating_Airline"]).issubset(set(GULF_AIRLINES))
 
-    def test_gulf_dataset_exposes_historical_years_only(self):
+    def test_gulf_dataset_exposes_historical_years_through_2026_ytd(self):
         frame = get_gulf_flights_df()
         assert sorted(frame["Year"].unique()) == GULF_ANALYTICS_YEARS
+        assert GULF_ANALYTICS_YEARS[-1] == 2026
         assert frame["FlightDate"].max().year == GULF_ANALYTICS_YEARS[-1]
+        assert frame["FlightDate"].max() <= GULF_ANALYTICS_END_DATE
 
     def test_gulf_dataset_contains_model_weather_and_time_features(self):
         frame = get_gulf_flights_df()
@@ -156,6 +159,7 @@ class TestGulfPortfolioData:
         assert row["origin_longitude"] == 31.4056
         assert row["destination_latitude"] == 25.2528
         assert row["destination_longitude"] == 55.3644
+        assert row["airline"] == "Emirates"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

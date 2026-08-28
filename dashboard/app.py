@@ -65,7 +65,7 @@ class LB:
         nav=[("◉","Live Airspace","live"),("▣","Historical Overview","overview"),
              ("✈","Airlines","airlines"),("🗺","Airports","map"),
              ("⬡","Routes","routes"),("▲","Trends","trends"),
-             ("◈","Risk Analyzer","risk"),("◆","ML Intelligence","ml"),
+             ("◈","Risk Analyzer","risk"),("◆","AI Intelligence","ml"),
              ("⌁","Prediction Lab","predict")]
         links=[html.Div(id=f"nav-{pid}",children=[
             html.Span(icon,style={"width":"20px","display":"inline-block","textAlign":"center","fontSize":"14px","marginRight":"10px","color":CYAN}),
@@ -157,7 +157,7 @@ class LB:
             self.intro("HISTORICAL OVERVIEW","Saudi & UAE portfolio performance",
                        "Summarizes historical-simulation flight volume, delay exposure, seasonality and route concentration for the selected market and year.",
                        "Choose a historical year, then compare countries, gateways or airlines and narrow the month range.",
-                       "Data: 2023–2025 portfolio simulation; this page contains no forecast or future-flight prediction."),
+                       "Data: 2023-2026 year-to-date portfolio simulation; this page contains no forecast or future-flight prediction."),
             html.Div(id="kpi-row",style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"16px"}),
             html.Div([
                 html.Div([dcc.Graph(id="chart-monthly",config=g,style={"height":"300px"})],style={**CARD_STYLE,"flex":"3"}),
@@ -173,6 +173,7 @@ class LB:
         g={"displayModeBar":False,"scrollZoom":True}
         columns=[
             {"name":"Callsign","id":"callsign"},{"name":"From","id":"origin"},{"name":"To","id":"destination"},
+            {"name":"Airline","id":"airline"},
             {"name":"Currently over","id":"current_area"},{"name":"Coordinates","id":"current_position"},
             {"name":"Nearest gateway","id":"nearest_airport"},
             {"name":"Distance km","id":"distance_to_airport_km"},
@@ -183,7 +184,7 @@ class LB:
         return html.Div([
             self.intro("LIVE AIRSPACE","Aircraft being observed now",
                        "Shows current OpenSky aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
-                       "Choose all countries, one country or a nearest-gateway catchment; aircraft color shows altitude, its nose follows the reported heading, and a dotted airport-to-airport line appears only for complete route matches.",
+                       "Choose all countries, one country, a nearest-gateway catchment or a recognized airline callsign prefix; aircraft color shows altitude and its nose follows the reported heading.",
                        "Positions: OpenSky · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
             html.Div([
                 html.Div([
@@ -199,10 +200,6 @@ class LB:
             html.Div(id="live-weather",style={"marginBottom":"12px"}),
             html.Div([
                 dcc.Graph(id="chart-live-map",config=g,style={"height":"540px"}),
-                html.Div(
-                    "Dotted line = matched origin airport to destination airport. It appears only when ADSBDB supplies both airport coordinates and is a straight reference—not the aircraft's filed or actually flown path.",
-                    style={"fontSize":"9px","color":MUTED,"padding":"0 14px 12px","lineHeight":"1.5"},
-                ),
             ],style={**CARD_STYLE,"marginBottom":"12px"}),
             html.Div([
                 html.Div("Aircraft observations",style={"fontSize":"14px","fontWeight":"700","color":TEXT,"marginBottom":"10px"}),
@@ -321,7 +318,7 @@ class LB:
         if not status.get("available"):
             return html.Div([
                 self.intro(
-                    "ML INTELLIGENCE", "Model governance and evaluation",
+                    "AI INTELLIGENCE", "Model governance and evaluation",
                     "Shows which delay model is serving predictions, how it compares with the baseline and whether its probabilities are calibrated.",
                     "Start the prediction API or deploy the API container to load the model artifact.",
                     "No heuristic is presented as a trained model.",
@@ -334,6 +331,8 @@ class LB:
 
         metrics = status.get("metrics", {})
         champion_metrics = metrics.get(status.get("champion"), {})
+        reliability_score = status.get("reliability_score", 0)
+        reliability_label = status.get("reliability_label", "portfolio score unavailable")
         metric_rows = [
             {
                 "model": model,
@@ -357,13 +356,14 @@ class LB:
         ]
         return html.Div([
             self.intro(
-                "ML INTELLIGENCE", "Delay model control room",
+                "AI INTELLIGENCE", "Model score and reliability",
                 "Separates model quality, explainability and deployment health from operational analytics and scenario inputs.",
-                "Review the champion against its baseline, inspect probability calibration and feature importance, then use Prediction Lab for a scenario.",
+                "Review the score, baseline comparison, calibration and feature importance, then use Prediction Lab for current or future what-if scenarios.",
                 status.get("limitations","Portfolio simulation; not an official airline forecast."),
             ),
             html.Div([
                 summary_card("CHAMPION", "CatBoost", status.get("algorithm",""), CYAN),
+                summary_card("MODEL SCORE", f"{reliability_score}/100", reliability_label, AMBER),
                 summary_card("ROC-AUC", f"{champion_metrics.get('roc_auc',0):.3f}", "Ranking quality on untouched 2025 data", GREEN),
                 summary_card("BRIER SCORE", f"{champion_metrics.get('brier',0):.3f}", "Probability error · lower is better", PURPLE),
                 summary_card("TEST SET", f"{status.get('test_rows',0):,}", "2025 simulated operations", TEXT),
@@ -377,6 +377,12 @@ class LB:
                     html.Div(f"Rows: {status.get('training_rows',0):,} fit · {status.get('calibration_rows',0):,} calibration · {status.get('test_rows',0):,} evaluation",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
                     html.Div(status.get("selection_reason",""),style={"fontSize":"10px","color":CYAN,"marginTop":"10px","lineHeight":"1.5"}),
                 ],style={**CARD_STYLE,"flex":"1"}),
+                html.Div([
+                    html.Div("RELIABILITY LENS",style={"fontSize":"10px","fontWeight":"700","color":AMBER,"letterSpacing":"1.4px","marginBottom":"10px"}),
+                    html.Div(f"{reliability_score}/100 · {reliability_label}",style={"fontSize":"15px","fontWeight":"700","color":TEXT}),
+                    html.Div(status.get("reliability_note",""),style={"fontSize":"11px","color":MUTED,"marginTop":"8px","lineHeight":"1.5"}),
+                    html.Div(f"Calibration gap: {status.get('calibration_gap',0):.3f}",style={"fontSize":"10px","color":AMBER,"marginTop":"10px"}),
+                ],style={**CARD_STYLE,"flex":"1","borderLeft":f"3px solid {AMBER}"}),
                 html.Div([
                     html.Div("DEPLOYMENT STATUS",style={"fontSize":"10px","fontWeight":"700","color":GREEN,"letterSpacing":"1.4px","marginBottom":"10px"}),
                     html.Div("● MODEL LOADED",style={"fontSize":"13px","fontWeight":"700","color":GREEN}),
@@ -423,11 +429,11 @@ class LB:
         return html.Div([
             self.intro("PREDICTION LAB","Test a Gulf delay scenario",
                        "Uses the calibrated CatBoost model served by FastAPI to estimate delay probability from portfolio route, carrier, calendar and weather features.",
-                       "Change the route, carrier, departure hour and weather inputs to see how the scenario responds.",
+                       "Change the route, carrier, date, departure hour and weather inputs to see how the scenario responds.",
                        "Output: portfolio what-if model; not official airline or airport status."),
             html.Div([
             html.Div("Gulf Delay Prediction Lab",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginBottom":"4px"}),
-            html.Div("Scenario estimate trained from the portfolio simulation; it is not official airline status.",style={"fontSize":"12px","color":MUTED,"marginBottom":"20px"}),
+            html.Div("Future dates are allowed for what-if scenarios; this is not a scheduled-flight forecast.",style={"fontSize":"12px","color":MUTED,"marginBottom":"20px"}),
             html.Div([
                 html.Div([
                     html.Div("Origin",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
@@ -498,8 +504,10 @@ class App:
         )
         def contextual_sidebar(page):
             analytics_pages={"overview","airlines","map","routes","trends"}
-            visible={} if page in analytics_pages else {"display":"none"}
-            return visible, visible
+            airline_pages=analytics_pages | {"live"}
+            airline_visible={} if page in airline_pages else {"display":"none"}
+            analytics_visible={} if page in analytics_pages else {"display":"none"}
+            return airline_visible, analytics_visible
 
         def _f(country,airport,airline,year,months,delayed):
             market = GULF_COUNTRIES.get(country, {})
@@ -527,7 +535,7 @@ class App:
             df=_f(country,airport,a,year,m,d)
             titles={"overview":"Historical Operations · Portfolio Simulation","airlines":"Airline Performance","routes":"Routes & Connectivity",
                     "trends":"Monthly Trends","risk":"◈ Gulf Flight Risk Analyzer","map":"🗺 Saudi & UAE Airport Map",
-                    "live":"◉ Live Gulf Airspace","ml":"◆ ML Intelligence","predict":"⌁ Prediction Lab"}
+                    "live":"◉ Live Gulf Airspace","ml":"◆ AI Intelligence","predict":"⌁ Prediction Lab"}
             pages={"live":lb.page_live,"overview":lb.page_overview,"airlines":lb.page_airlines,
                    "routes":lb.page_routes,"trends":lb.page_trends,"map":lb.page_map,
                    "predict":lb.page_predict}
@@ -653,11 +661,13 @@ class App:
             Output("live-count","children"),Output("live-updated","children"),
             Output("live-weather","children"),
             Input("tick","n_intervals"),Input("filter-gulf-country","value"),
-            Input("filter-gulf-airport","value"),
+            Input("filter-gulf-airport","value"),Input("filter-airline","value"),
         )
-        def live_airspace(_, country, airport):
+        def live_airspace(_, country, airport, airline):
             payload=get_live_flights(country,airport)
             rows=payload.get("data",[])
+            if airline and airline != "ALL":
+                rows=[row for row in rows if row.get("airline") == airline]
             is_live=bool(payload.get("is_live"))
             color=GREEN if is_live else AMBER
             status="● LIVE · OPENSKY" if is_live else "● LIVE FEED UNAVAILABLE"
@@ -684,7 +694,7 @@ class App:
             else:
                 weather_card=html.Div("Select a gateway airport to add current Open-Meteo weather.",style={**CARD_STYLE,"fontSize":"11px","color":MUTED})
             table_rows=[{key:row.get(key) for key in [
-                "callsign","origin","destination","current_area","current_position","nearest_airport",
+                "callsign","origin","destination","airline","current_area","current_position","nearest_airport",
                 "distance_to_airport_km","altitude_ft","speed_kmh","heading",
                 "registration_country","route_source",
             ]} for row in rows]

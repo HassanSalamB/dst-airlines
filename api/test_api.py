@@ -319,6 +319,8 @@ class TestGulfPredictionModel:
         assert data["available"] is True
         assert data["champion"] == "Calibrated CatBoost"
         assert "Logistic Regression" in data["metrics"]
+        assert 0 <= data["reliability_score"] <= 100
+        assert data["reliability_label"]
 
     def test_gulf_prediction_returns_calibrated_probability(self):
         response = client.post("/predict/gulf", json={

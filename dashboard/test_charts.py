@@ -9,7 +9,7 @@ def test_aircraft_silhouette_rotates_toward_heading():
     assert east_facing[0][1] > 46.7
 
 
-def test_live_map_uses_large_plane_shapes_and_matched_routes():
+def test_live_map_uses_large_plane_shapes_without_route_lines():
     rows = [{
         "icao24": "abc123",
         "callsign": "TEST1",
@@ -30,8 +30,9 @@ def test_live_map_uses_large_plane_shapes_and_matched_routes():
 
     figure = ChartFactory().live_aircraft_map(rows, "Saudi Arabia", "RUH")
 
-    assert figure.data[0].name == "Matched origin–destination route"
     assert any(trace.fill == "toself" for trace in figure.data)
+    assert all(trace.line.dash != "dot" for trace in figure.data)
+    assert all(trace.name != "Matched origin–destination route" for trace in figure.data)
     assert not any(getattr(trace.marker, "symbol", None) == "arrow-up" for trace in figure.data)
 
 

@@ -412,44 +412,11 @@ class ChartFactory:
             )
             altitude_scale = [[0, GREEN], [0.45, CYAN], [1, PURPLE]]
 
-            route_latitudes = []
-            route_longitudes = []
-            endpoint_latitudes = []
-            endpoint_longitudes = []
-            endpoint_labels = []
             aircraft_bands = {}
             for _, aircraft in frame.iterrows():
                 latitude = float(aircraft["latitude"])
                 longitude = float(aircraft["longitude"])
                 heading = aircraft["heading"]
-
-                origin_latitude = aircraft.get("origin_latitude")
-                origin_longitude = aircraft.get("origin_longitude")
-                destination_latitude = aircraft.get("destination_latitude")
-                destination_longitude = aircraft.get("destination_longitude")
-                has_route_coordinates = all(pd.notna(value) for value in [
-                    origin_latitude,
-                    origin_longitude,
-                    destination_latitude,
-                    destination_longitude,
-                ])
-                if has_route_coordinates:
-                    route_latitudes.extend([
-                        float(origin_latitude), float(destination_latitude), None,
-                    ])
-                    route_longitudes.extend([
-                        float(origin_longitude), float(destination_longitude), None,
-                    ])
-                    endpoint_latitudes.extend([
-                        float(origin_latitude), float(destination_latitude),
-                    ])
-                    endpoint_longitudes.extend([
-                        float(origin_longitude), float(destination_longitude),
-                    ])
-                    endpoint_labels.extend([
-                        f"Origin · {aircraft.get('origin', 'Unknown')}",
-                        f"Destination · {aircraft.get('destination', 'Unknown')}",
-                    ])
 
                 altitude = aircraft["altitude_ft"]
                 altitude_fraction = 0 if pd.isna(altitude) else min(max(float(altitude), 0), 45000) / 45000
@@ -462,28 +429,6 @@ class ChartFactory:
                 )
                 aircraft_bands[band]["lat"].extend([point[0] for point in polygon] + [None])
                 aircraft_bands[band]["lon"].extend([point[1] for point in polygon] + [None])
-
-            if route_latitudes:
-                fig.add_trace(go.Scattergeo(
-                    lat=route_latitudes,
-                    lon=route_longitudes,
-                    mode="lines",
-                    line=dict(color="rgba(0,212,255,0.52)", width=1.6, dash="dot"),
-                    name="Matched origin–destination route",
-                    hoverinfo="skip",
-                ))
-                fig.add_trace(go.Scattergeo(
-                    lat=endpoint_latitudes,
-                    lon=endpoint_longitudes,
-                    mode="markers",
-                    marker=dict(
-                        size=6, symbol="circle-open", color=CYAN,
-                        line=dict(color=CYAN, width=1.2),
-                    ),
-                    customdata=endpoint_labels,
-                    hovertemplate="%{customdata}<extra></extra>",
-                    showlegend=False,
-                ))
 
             for band, coordinates in sorted(aircraft_bands.items()):
                 color = MUTED if band < 0 else sample_colorscale(
