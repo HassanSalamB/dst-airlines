@@ -26,6 +26,9 @@ from data import (
     AIRPORTS,
     GULF_AIRLINES,
     GULF_COUNTRIES,
+    _LIVE_TRACKS,
+    _LIVE_TRACK_LAST_SEEN,
+    _attach_live_trails,
     _mock,
     _market_for_position,
     get_gulf_flights_df,
@@ -118,6 +121,25 @@ class TestGulfPortfolioData:
         assert _market_for_position(24.71, 46.68) == "Saudi Arabia"
         assert _market_for_position(25.20, 55.27) == "United Arab Emirates"
         assert _market_for_position(32.08, 34.78) is None
+
+    def test_live_trail_keeps_distinct_successive_observations(self):
+        _LIVE_TRACKS.clear()
+        _LIVE_TRACK_LAST_SEEN.clear()
+        first = [{
+            "icao24": "abc123", "latitude": 24.70, "longitude": 46.60,
+            "snapshot_time": 100,
+        }]
+        second = [{
+            "icao24": "abc123", "latitude": 24.75, "longitude": 46.70,
+            "snapshot_time": 130,
+        }]
+
+        assert len(_attach_live_trails(first)[0]["trail"]) == 1
+        assert len(_attach_live_trails(second)[0]["trail"]) == 2
+        assert len(_attach_live_trails(second)[0]["trail"]) == 2
+
+        _LIVE_TRACKS.clear()
+        _LIVE_TRACK_LAST_SEEN.clear()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

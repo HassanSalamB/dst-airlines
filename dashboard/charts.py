@@ -2,8 +2,12 @@
 charts.py — DST Airlines · Plotly Chart Factory (OOP)
 Professional dark theme · Fixed legend positions · Aviation-grade palette
 """
+from math import cos, radians, sin
+
 import plotly.graph_objects as go
 import pandas as pd
+from plotly.colors import sample_colorscale
+
 from data import DELAY_CAUSES
 
 # ── Professional Aviation Palette ──────────────────────────────────────────
@@ -21,6 +25,49 @@ TEXT     = "#f1f5f9"
 MUTED    = "#64748b"
 GRID     = "#1e2a3a"
 CAT_COLORS = [CYAN, BLUE, PURPLE, GREEN, AMBER]
+
+
+def _offset_geo_point(latitude: float, longitude: float, east_km: float, north_km: float):
+    """Move a map point by a small local east/north offset."""
+    latitude_delta = north_km / 110.574
+    longitude_scale = max(0.2, cos(radians(latitude)))
+    longitude_delta = east_km / (111.320 * longitude_scale)
+    return latitude + latitude_delta, longitude + longitude_delta
+
+
+def _aircraft_polygon(latitude: float, longitude: float, heading: float, scale_km: float = 30):
+    """Return a recognizable aircraft silhouette rotated to a compass heading."""
+    outline = [
+        (0.00, 1.00), (0.12, 0.58), (0.14, 0.16),
+        (0.68, -0.14), (0.68, -0.30), (0.14, -0.20),
+        (0.11, -0.64), (0.36, -0.86), (0.34, -0.98),
+        (0.00, -0.84), (-0.34, -0.98), (-0.36, -0.86),
+        (-0.11, -0.64), (-0.14, -0.20), (-0.68, -0.30),
+        (-0.68, -0.14), (-0.14, 0.16), (-0.12, 0.58),
+        (0.00, 1.00),
+    ]
+    angle = radians(float(heading or 0))
+    points = []
+    for east, north in outline:
+        east *= scale_km
+        north *= scale_km
+        rotated_east = east * cos(angle) + north * sin(angle)
+        rotated_north = -east * sin(angle) + north * cos(angle)
+        points.append(
+            _offset_geo_point(latitude, longitude, rotated_east, rotated_north)
+        )
+    return points
+
+
+def _heading_endpoint(latitude: float, longitude: float, heading: float, distance_km: float):
+    """Project a straight directional guide from a current heading."""
+    angle = radians(float(heading))
+    return _offset_geo_point(
+        latitude,
+        longitude,
+        distance_km * sin(angle),
+        distance_km * cos(angle),
+    )
 
 def _base(title: str = "", margin_t: int = 50) -> dict:
     return dict(
@@ -368,43 +415,108 @@ class ChartFactory:
             frame["label"] = frame["callsign"].fillna(frame["icao24"]).fillna("Unknown")
             frame["altitude_ft"] = pd.to_numeric(frame.get("altitude_ft"), errors="coerce")
             frame["speed_kmh"] = pd.to_numeric(frame.get("speed_kmh"), errors="coerce")
-            frame["heading"] = pd.to_numeric(frame.get("heading"), errors="coerce").fillna(0)
-            altitude_color = frame["altitude_ft"].fillna(0).clip(lower=0, upper=45000)
-            altitude_scale = [[0, GREEN], [0.45, CYAN], [1, PURPLE]]
-            marker_common = dict(
-                angle=frame["heading"], angleref="north", color=altitude_color,
-                colorscale=altitude_scale, cmin=0, cmax=45000,
+            frame["heading"] = pd.to_numeric(frame.get("heading"), errors="coerce")
+            frame["heading_label"] = frame["heading"].apply(
+                lambda value: f"{value:.0f}°" if pd.notna(value) else "Not reported"
             )
+            altitude_scale = [[0, GREEN], [0.45, CYAN], [1, PURPLE]]
+
+            observed_latitudes = []
+            observed_longitudes = []
+            guide_latitudes = []
+            guide_longitudes = []
+            aircraft_bands = {}
+            for _, aircraft in frame.iterrows():
+                latitude = float(aircraft["latitude"])
+                longitude = float(aircraft["longitude"])
+                trail = aircraft.get("trail")
+                if isinstance(trail, list) and len(trail) > 1:
+                    observed_latitudes.extend(
+                        [point["latitude"] for point in trail] + [None]
+                    )
+                    observed_longitudes.extend(
+                        [point["longitude"] for point in trail] + [None]
+                    )
+
+                heading = aircraft["heading"]
+                if pd.notna(heading):
+                    speed = aircraft["speed_kmh"]
+                    guide_distance = 70 if pd.isna(speed) else max(25, min(float(speed) / 6, 140))
+                    guide_end = _heading_endpoint(
+                        latitude, longitude, float(heading), guide_distance
+                    )
+                    guide_latitudes.extend([latitude, guide_end[0], None])
+                    guide_longitudes.extend([longitude, guide_end[1], None])
+
+                altitude = aircraft["altitude_ft"]
+                altitude_fraction = 0 if pd.isna(altitude) else min(max(float(altitude), 0), 45000) / 45000
+                band = -1 if pd.isna(altitude) else min(8, int(altitude_fraction * 9))
+                aircraft_bands.setdefault(band, {"lat": [], "lon": []})
+                polygon = _aircraft_polygon(
+                    latitude,
+                    longitude,
+                    float(heading) if pd.notna(heading) else 0,
+                )
+                aircraft_bands[band]["lat"].extend([point[0] for point in polygon] + [None])
+                aircraft_bands[band]["lon"].extend([point[1] for point in polygon] + [None])
+
+            fig.add_trace(go.Scattergeo(
+                lat=observed_latitudes or [None],
+                lon=observed_longitudes or [None],
+                mode="lines",
+                line=dict(color="rgba(0,212,255,0.48)", width=1.8, dash="dot"),
+                name="Observed trail",
+                hoverinfo="skip",
+            ))
+            fig.add_trace(go.Scattergeo(
+                lat=guide_latitudes or [None],
+                lon=guide_longitudes or [None],
+                mode="lines",
+                line=dict(color="rgba(241,245,249,0.42)", width=1.4, dash="dot"),
+                name="10-min heading guide",
+                hoverinfo="skip",
+            ))
+
+            for band, coordinates in sorted(aircraft_bands.items()):
+                color = MUTED if band < 0 else sample_colorscale(
+                    altitude_scale, [min(1, (band + 0.5) / 9)]
+                )[0]
+                fig.add_trace(go.Scattergeo(
+                    lat=coordinates["lat"],
+                    lon=coordinates["lon"],
+                    mode="lines",
+                    line=dict(color="rgba(255,255,255,0.72)", width=0.7),
+                    fill="toself",
+                    fillcolor=color,
+                    hoverinfo="skip",
+                    showlegend=False,
+                ))
+
+            altitude_color = frame["altitude_ft"].fillna(0).clip(lower=0, upper=45000)
             fig.add_trace(go.Scattergeo(
                 lat=frame["latitude"], lon=frame["longitude"], mode="markers",
                 marker={
-                    **marker_common,
-                    "size": 18,
-                    "symbol": "arrow-up",
+                    "color": altitude_color,
+                    "colorscale": altitude_scale,
+                    "cmin": 0,
+                    "cmax": 45000,
+                    "size": 22,
+                    "symbol": "circle",
                     "showscale": True,
-                    "line": dict(color="rgba(255,255,255,0.65)", width=0.8),
+                    "opacity": 0.01,
                     "colorbar":dict(
                         title=dict(text="Altitude (ft)", font=dict(color=MUTED, size=10)),
                         tickfont=dict(color=MUTED, size=9), outlinewidth=0, thickness=10,
                     ),
                 },
-                customdata=frame[["label", "icao24", "altitude_ft", "speed_kmh", "heading", "nearest_airport", "distance_to_airport_km"]].values,
+                customdata=frame[["label", "icao24", "altitude_ft", "speed_kmh", "heading_label", "nearest_airport", "distance_to_airport_km"]].values,
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>ICAO24: %{customdata[1]}<br>"
                     "Altitude: %{customdata[2]:,.0f} ft<br>Speed: %{customdata[3]:,.0f} km/h<br>"
-                    "Heading: %{customdata[4]:.0f}°<br>Nearest gateway: %{customdata[5]} "
+                    "Heading: %{customdata[4]}<br>Nearest gateway: %{customdata[5]} "
                     "(%{customdata[6]:.0f} km)<extra></extra>"
                 ),
-            ))
-            fig.add_trace(go.Scattergeo(
-                lat=frame["latitude"], lon=frame["longitude"], mode="markers",
-                marker={
-                    **marker_common,
-                    "size": 13,
-                    "symbol": "line-ew",
-                    "showscale": False,
-                },
-                hoverinfo="skip", showlegend=False,
+                showlegend=False,
             ))
         else:
             fig.add_annotation(
@@ -421,6 +533,11 @@ class ChartFactory:
             title=dict(
                 text=f"Live Gulf aircraft · {title_scope}",
                 font=dict(size=13, color=TEXT), x=0, xanchor="left", pad=dict(l=10),
+            ),
+            legend=dict(
+                orientation="h", x=0.01, y=0.99, xanchor="left", yanchor="top",
+                bgcolor="rgba(15,21,35,0.78)", bordercolor=BORDER, borderwidth=1,
+                font=dict(color=MUTED, size=10),
             ),
             geo=dict(
                 scope="world", bgcolor=BG, landcolor="#0f1a2e", countrycolor=BORDER,

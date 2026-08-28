@@ -4,9 +4,11 @@ Falls back to mock data if API is unavailable.
 """
 import os
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from math import asin, cos, radians, sin, sqrt
+from threading import Lock
 import pandas as pd
 import numpy as np
 import requests
@@ -418,6 +420,11 @@ def api_healthy():
 
 _LIVE_CACHE = {"fetched_at": 0.0, "payload": None}
 _ROUTE_CACHE = {}
+_LIVE_TRACKS = {}
+_LIVE_TRACK_LAST_SEEN = {}
+_LIVE_TRACK_LOCK = Lock()
+LIVE_TRACK_MAX_POINTS = 12
+LIVE_TRACK_MAX_AGE_SECONDS = 900
 
 
 def _point_in_polygon(latitude, longitude, polygon):
@@ -583,6 +590,58 @@ def _enrich_live_routes(rows):
     return rows
 
 
+def _attach_live_trails(rows):
+    """Keep a short in-process history of genuinely observed aircraft positions."""
+    now = time.time()
+    with _LIVE_TRACK_LOCK:
+        for row in rows:
+            aircraft_id = row.get("icao24")
+            latitude = row.get("latitude")
+            longitude = row.get("longitude")
+            if not aircraft_id or latitude is None or longitude is None:
+                row["trail"] = []
+                continue
+
+            sample_time = row.get("snapshot_time") or row.get("last_contact") or now
+            try:
+                sample_time = float(sample_time)
+            except (TypeError, ValueError):
+                sample_time = now
+
+            history = _LIVE_TRACKS.setdefault(
+                aircraft_id,
+                deque(maxlen=LIVE_TRACK_MAX_POINTS),
+            )
+            point = {
+                "latitude": float(latitude),
+                "longitude": float(longitude),
+                "time": sample_time,
+            }
+            if not history or (
+                sample_time > history[-1]["time"]
+                and (
+                    point["latitude"] != history[-1]["latitude"]
+                    or point["longitude"] != history[-1]["longitude"]
+                )
+            ):
+                history.append(point)
+
+            while history and sample_time - history[0]["time"] > LIVE_TRACK_MAX_AGE_SECONDS:
+                history.popleft()
+            _LIVE_TRACK_LAST_SEEN[aircraft_id] = now
+            row["trail"] = list(history)
+
+        stale_ids = [
+            aircraft_id
+            for aircraft_id, last_seen in _LIVE_TRACK_LAST_SEEN.items()
+            if now - last_seen > LIVE_TRACK_MAX_AGE_SECONDS * 2
+        ]
+        for aircraft_id in stale_ids:
+            _LIVE_TRACKS.pop(aircraft_id, None)
+            _LIVE_TRACK_LAST_SEEN.pop(aircraft_id, None)
+    return rows
+
+
 def get_live_flights(country=None, airport=None):
     """Get live OpenSky aircraft via FastAPI, with a direct read-only fallback."""
     params = {"limit": 500}
@@ -596,14 +655,16 @@ def get_live_flights(country=None, airport=None):
         if response.status_code == 200:
             result = response.json()
             if result.get("data"):
-                result["data"] = _enrich_live_routes(result["data"])
+                result["data"] = _attach_live_trails(
+                    _enrich_live_routes(result["data"])
+                )
                 return result
     except Exception:
         pass
 
     try:
         result = _direct_opensky_payload().copy()
-        rows = result["data"]
+        rows = _attach_live_trails(result["data"])
         if country:
             rows = [row for row in rows if row.get("market_country") == country]
         if airport and airport != "ALL":

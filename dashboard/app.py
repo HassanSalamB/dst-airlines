@@ -173,7 +173,7 @@ class LB:
         return html.Div([
             self.intro("LIVE AIRSPACE","Aircraft being observed now",
                        "Shows current OpenSky aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
-                       "Choose a country and gateway; icon color shows altitude and the aircraft nose follows its reported heading. Inspect the table for route and current-position detail.",
+                       "Choose a country and gateway; aircraft color shows altitude, its nose follows the reported heading, and dotted tracks reveal movement. Inspect the table for route and current-position detail.",
                        "Positions: OpenSky · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
             html.Div([
                 html.Div([
@@ -187,7 +187,13 @@ class LB:
                 ]),
             ],style={**CARD_STYLE,"display":"flex","justifyContent":"space-between","alignItems":"center","borderLeft":f"3px solid {GREEN}","marginBottom":"12px"}),
             html.Div(id="live-weather",style={"marginBottom":"12px"}),
-            html.Div([dcc.Graph(id="chart-live-map",config=g,style={"height":"540px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
+            html.Div([
+                dcc.Graph(id="chart-live-map",config=g,style={"height":"540px"}),
+                html.Div(
+                    "Observed trail = positions captured while this dashboard is running · 10-minute heading guide = straight-line direction from current speed and heading, not a predicted route or destination.",
+                    style={"fontSize":"9px","color":MUTED,"padding":"0 14px 12px","lineHeight":"1.5"},
+                ),
+            ],style={**CARD_STYLE,"marginBottom":"12px"}),
             html.Div([
                 html.Div("Aircraft observations",style={"fontSize":"14px","fontWeight":"700","color":TEXT,"marginBottom":"10px"}),
                 dash_table.DataTable(
