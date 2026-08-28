@@ -80,7 +80,7 @@ class LB:
             html.Div("Country → airport → airline",style={"fontSize":"10px","color":MUTED,"padding":"0 14px 10px","lineHeight":"1.4"}),
             html.Div([html.Div("Focus Country",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
                       dcc.Dropdown(id="filter-gulf-country",
-                                   options=[
+                                   options=[{"label":"🌍  All countries","value":"ALL"}] + [
                                        {"label":f"{v['flag']}  {country}","value":country}
                                        for country,v in GULF_COUNTRIES.items()
                                    ],value="Saudi Arabia",clearable=False,style=DD_STYLE,className="dst-dropdown")],
@@ -182,7 +182,7 @@ class LB:
         return html.Div([
             self.intro("LIVE AIRSPACE","Aircraft being observed now",
                        "Shows current OpenSky aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
-                       "Choose a country and gateway; aircraft color shows altitude, its nose follows the reported heading, and a dotted airport-to-airport line appears only for complete route matches.",
+                       "Choose all countries, one country or a nearest-gateway catchment; aircraft color shows altitude, its nose follows the reported heading, and a dotted airport-to-airport line appears only for complete route matches.",
                        "Positions: OpenSky · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
             html.Div([
                 html.Div([
@@ -402,9 +402,14 @@ class App:
 
         def _f(country,airport,airline,year,months,delayed):
             market = GULF_COUNTRIES.get(country, {})
-            if airport not in market.get("airports", {}):
+            valid_airports = (
+                {code for item in GULF_COUNTRIES.values() for code in item["airports"]}
+                if country == "ALL" else set(market.get("airports", {}))
+            )
+            valid_airlines = GULF_AIRLINES if country == "ALL" else market.get("airlines", [])
+            if airport not in valid_airports:
                 airport = "ALL"
-            if airline not in market.get("airlines", []) and airline != "ALL":
+            if airline not in valid_airlines and airline != "ALL":
                 airline = "ALL"
             df=get_gulf_flights_df(country,airport)
             if airline and airline!="ALL" and "Operating_Airline" in df.columns: df=df[df["Operating_Airline"]==airline]
@@ -434,6 +439,14 @@ class App:
             Input("filter-gulf-country", "value"),
         )
         def gulf_airport_options(country):
+            if country == "ALL":
+                options = [{"label": "All gateways", "value": "ALL"}]
+                for market_country, market in GULF_COUNTRIES.items():
+                    options.extend([
+                        {"label": f"{code} — {name} ({market_country})", "value": code}
+                        for code, name in market["airports"].items()
+                    ])
+                return options, "ALL"
             if country not in GULF_COUNTRIES:
                 return [], None
             options = [{"label": "All gateways", "value": "ALL"}] + [
@@ -459,6 +472,21 @@ class App:
             Input("filter-gulf-airport", "value"),
         )
         def gulf_focus(country, airport):
+            if country == "ALL":
+                airport_name = "All Saudi and UAE gateways"
+                if airport != "ALL":
+                    for market in GULF_COUNTRIES.values():
+                        if airport in market["airports"]:
+                            airport_name = market["airports"][airport]
+                            break
+                return html.Div([
+                    html.Div([
+                        html.Span("🌍  Saudi Arabia + UAE",style={"fontSize":"14px","fontWeight":"700","color":TEXT}),
+                        html.Span(" · ",style={"color":MUTED}),
+                        html.Span(f"{airport if airport != 'ALL' else 'All gateways'} · {airport_name}",style={"fontSize":"12px","color":CYAN}),
+                    ]),
+                    html.Div("Combined Gulf portfolio lens across both countries",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
+                ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {GREEN}"})
             if country not in GULF_COUNTRIES:
                 return html.Div([
                     html.Span("GULF MARKET LENS",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.5px","marginRight":"12px"}),

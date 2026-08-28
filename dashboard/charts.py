@@ -533,7 +533,11 @@ class ChartFactory:
                 font=dict(color=MUTED, size=13),
             )
 
-        title_scope = f"{airport} vicinity" if airport and airport != "ALL" else country
+        title_scope = (
+            f"{airport} catchment"
+            if airport and airport != "ALL"
+            else "Saudi Arabia + UAE" if country == "ALL" else country
+        )
         fig.update_layout(
             paper_bgcolor=CARD, plot_bgcolor=CARD,
             font=dict(family="DM Sans", color=TEXT),

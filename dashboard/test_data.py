@@ -492,3 +492,39 @@ class TestGetLiveFlights:
         result = get_live_flights()
         assert result["data"] == []
         assert result["is_live"] is False
+
+    @patch('data.requests.get')
+    def test_all_countries_omits_country_api_filter(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [{"icao24": "abc123", "callsign": None}]
+        }
+        mock_get.return_value = mock_response
+
+        get_live_flights("ALL", "ALL")
+
+        assert "country" not in mock_get.call_args.kwargs["params"]
+
+    @patch('data._direct_opensky_payload')
+    @patch('data.requests.get')
+    def test_gateway_catchment_does_not_discard_distant_nearest_aircraft(
+        self, mock_get, direct_payload
+    ):
+        import requests
+        mock_get.side_effect = requests.exceptions.ConnectionError()
+        direct_payload.return_value = {
+            "data": [{
+                "icao24": "abc123", "callsign": None,
+                "market_country": "Saudi Arabia", "nearest_airport": "RUH",
+                "distance_to_airport_km": 298.0,
+                "latitude": 26.0, "longitude": 44.0,
+            }],
+            "count": 1, "last_updated": "2026-08-28T12:00:00Z",
+            "source": "OpenSky Network", "is_live": True,
+        }
+
+        result = get_live_flights("Saudi Arabia", "RUH")
+
+        assert result["count"] == 1
+        assert result["data"][0]["nearest_airport"] == "RUH"

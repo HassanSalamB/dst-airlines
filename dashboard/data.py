@@ -611,7 +611,7 @@ def _enrich_live_routes(rows):
 def get_live_flights(country=None, airport=None):
     """Get live OpenSky aircraft via FastAPI, with a direct read-only fallback."""
     params = {"limit": 500}
-    if country:
+    if country and country != "ALL":
         params["country"] = country
     if airport and airport != "ALL":
         params["airport"] = airport
@@ -629,15 +629,19 @@ def get_live_flights(country=None, airport=None):
     try:
         result = _direct_opensky_payload().copy()
         rows = result["data"]
-        if country:
+        if country and country != "ALL":
             rows = [row for row in rows if row.get("market_country") == country]
         if airport and airport != "ALL":
             rows = [
                 row for row in rows
-                if row.get("nearest_airport") == airport and row.get("distance_to_airport_km", 9999) <= 250
+                if row.get("nearest_airport") == airport
             ]
         result["data"] = rows
         result["count"] = len(rows)
+        result["scope_note"] = (
+            "Gateway selection uses the nearest supported gateway catchment; "
+            "it is not a fixed-radius airport boundary."
+        )
         result["data"] = _enrich_live_routes(result["data"])
         return result
     except Exception as exc:
