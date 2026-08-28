@@ -12,6 +12,7 @@ from data import (
     API_BASE_URL,
     AIRLINES,
     AIRPORTS,
+    GULF_COUNTRIES,
     api_healthy,
     get_flights_df,
 )
@@ -100,6 +101,20 @@ class LB:
                                      value="all",style={"color":MUTED,"fontSize":"12px"},
                                      labelStyle={"display":"block","marginBottom":"4px"})],
                      style={"padding":"0 10px"}),
+            html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"18px 14px 14px"}),
+            html.Div("GULF MARKET LENS",style={"fontSize":"9px","fontWeight":"700","color":CYAN,"letterSpacing":"2px","padding":"0 14px 6px"}),
+            html.Div("Country → gateway context",style={"fontSize":"10px","color":MUTED,"padding":"0 14px 10px","lineHeight":"1.4"}),
+            html.Div([html.Div("Focus Country",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                      dcc.Dropdown(id="filter-gulf-country",
+                                   options=[{"label":"All Gulf Markets","value":"ALL"}]+[
+                                       {"label":f"{v['flag']}  {country}","value":country}
+                                       for country,v in GULF_COUNTRIES.items()
+                                   ],value="Saudi Arabia",clearable=False,style=DD_STYLE,className="dst-dropdown")],
+                     style={"padding":"0 10px","marginBottom":"14px"}),
+            html.Div([html.Div("Gateway Airport",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                      dcc.Dropdown(id="filter-gulf-airport",value="RUH",clearable=False,style=DD_STYLE,className="dst-dropdown")],
+                     style={"padding":"0 10px","marginBottom":"8px"}),
+            html.Div("Context overlay · operational sample remains US flights",style={"fontSize":"10px","color":MUTED,"padding":"0 10px","lineHeight":"1.4"}),
         ],style={"width":SIDEBAR_W,"minWidth":SIDEBAR_W,"backgroundColor":CARD,"borderRight":f"1px solid {BORDER}",
                  "height":"calc(100vh - 56px)","position":"sticky","top":"56px","overflowY":"auto"})
 
@@ -258,6 +273,7 @@ class App:
                     dcc.Store(id="page",data="overview"),
                     dcc.Interval(id="tick",interval=30000,n_intervals=0),
                     html.Div(id="page-header",style={"fontSize":"20px","fontWeight":"700","color":TEXT,"marginBottom":"16px"}),
+                    html.Div(id="gulf-focus",style={"marginBottom":"16px"}),
                     html.Div(id="page-content"),
                 ],style={"flex":"1","padding":"20px 24px","overflowY":"auto","backgroundColor":BG,"minHeight":"calc(100vh - 56px)"}),
             ],style={"display":"flex"}),
@@ -289,8 +305,8 @@ class App:
         ins=[Input("filter-airline","value"),Input("filter-origin","value"),Input("filter-month","value"),Input("filter-delayed","value")]
 
         @app.callback(Output("page-content","children"),Output("page-header","children"),
-                      Input("page","data"),*ins)
-        def render(page,a,o,m,d):
+                      Input("page","data"),*ins,Input("filter-gulf-country","value"),Input("filter-gulf-airport","value"))
+        def render(page,a,o,m,d,gulf_country,gulf_airport):
             df=_f(a,o,m,d)
             titles={"overview":"Overview","airlines":"Airline Performance","routes":"Route Analysis",
                     "trends":"Monthly Trends","risk":"◈ Flight Risk Analyzer","map":"🗺 Airport Delay Map",
@@ -298,6 +314,42 @@ class App:
             pages={"overview":lb.page_overview,"airlines":lb.page_airlines,"routes":lb.page_routes,"trends":lb.page_trends,"map":lb.page_map,"graph":lb.page_graph,}
             content=lb.page_risk(df) if page=="risk" else pages.get(page,lb.page_overview)()
             return content,titles.get(page,"Dashboard")
+
+        @app.callback(
+            Output("filter-gulf-airport", "options"),
+            Output("filter-gulf-airport", "value"),
+            Input("filter-gulf-country", "value"),
+        )
+        def gulf_airport_options(country):
+            if country == "ALL" or country not in GULF_COUNTRIES:
+                return [{"label": "All Gulf Gateways", "value": "ALL"}], "ALL"
+            options = [
+                {"label": f"{code} — {name}", "value": code}
+                for code, name in GULF_COUNTRIES[country]["airports"].items()
+            ]
+            return options, options[0]["value"]
+
+        @app.callback(
+            Output("gulf-focus", "children"),
+            Input("filter-gulf-country", "value"),
+            Input("filter-gulf-airport", "value"),
+        )
+        def gulf_focus(country, airport):
+            if country == "ALL" or country not in GULF_COUNTRIES:
+                return html.Div([
+                    html.Span("GULF MARKET LENS",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.5px","marginRight":"12px"}),
+                    html.Span("Select a country and gateway to focus the network context.",style={"fontSize":"12px","color":MUTED}),
+                ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {CYAN}"})
+            market = GULF_COUNTRIES[country]
+            airport_name = market["airports"].get(airport, "All gateways")
+            return html.Div([
+                html.Div([
+                    html.Span(f"{market['flag']}  {country}",style={"fontSize":"14px","fontWeight":"700","color":TEXT}),
+                    html.Span(" · ",style={"color":MUTED}),
+                    html.Span(f"{airport or 'All'} · {airport_name}",style={"fontSize":"12px","color":CYAN}),
+                ]),
+                html.Div(f"{market['focus']} · contextual gateway selection for route and delay analysis",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
+            ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {GREEN}"})
 
         @app.callback(Output("kpi-row","children"),*ins)
         def kpis(a,o,m,d):

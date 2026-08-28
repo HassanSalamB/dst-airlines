@@ -34,6 +34,55 @@ AIRPORTS = {
     "SFO":"San Francisco","SLC":"Salt Lake City","STL":"St. Louis","TPA":"Tampa",
 }
 
+# Gulf market reference layer used by the dashboard's network-planning lens.
+# The operational sample remains the original US flight dataset; these gateways
+# are intentionally presented as contextual market selections, not fabricated
+# delay observations.
+GULF_COUNTRIES = {
+    "Saudi Arabia": {
+        "flag": "🇸🇦",
+        "airports": {
+            "RUH": "King Khalid International · Riyadh",
+            "JED": "King Abdulaziz International · Jeddah",
+            "DMM": "King Fahd International · Dammam",
+            "MED": "Prince Mohammad bin Abdulaziz · Medina",
+        },
+        "focus": "Riyadh Air market context",
+    },
+    "United Arab Emirates": {
+        "flag": "🇦🇪",
+        "airports": {
+            "DXB": "Dubai International · Dubai",
+            "AUH": "Zayed International · Abu Dhabi",
+            "SHJ": "Sharjah International · Sharjah",
+        },
+        "focus": "Emirates market context",
+    },
+    "Qatar": {
+        "flag": "🇶🇦",
+        "airports": {"DOH": "Hamad International · Doha"},
+        "focus": "Qatar Airways market context",
+    },
+    "Bahrain": {
+        "flag": "🇧🇭",
+        "airports": {"BAH": "Bahrain International · Manama"},
+        "focus": "Gulf Air market context",
+    },
+    "Kuwait": {
+        "flag": "🇰🇼",
+        "airports": {"KWI": "Kuwait International · Kuwait City"},
+        "focus": "Kuwait Airways market context",
+    },
+    "Oman": {
+        "flag": "🇴🇲",
+        "airports": {
+            "MCT": "Muscat International · Muscat",
+            "SLL": "Salalah International · Salalah",
+        },
+        "focus": "Oman Air market context",
+    },
+}
+
 DELAY_CAUSES = [
     "CarrierDelay","WeatherDelay","NASDelay",
     "SecurityDelay","LateAircraftDelay",
