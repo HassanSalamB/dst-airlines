@@ -369,25 +369,15 @@ class ChartFactory:
             frame["altitude_ft"] = pd.to_numeric(frame.get("altitude_ft"), errors="coerce")
             frame["speed_kmh"] = pd.to_numeric(frame.get("speed_kmh"), errors="coerce")
             fig.add_trace(go.Scattergeo(
-                lat=frame["latitude"], lon=frame["longitude"], mode="markers",
-                marker=dict(
-                    size=9,
-                    color=frame["altitude_ft"].fillna(0),
-                    colorscale=[[0, GREEN], [0.45, CYAN], [1, PURPLE]],
-                    opacity=0.9,
-                    line=dict(color="rgba(255,255,255,0.35)", width=0.7),
-                    colorbar=dict(
-                        title=dict(text="Altitude ft", font=dict(color=MUTED, size=10)),
-                        tickfont=dict(color=MUTED, size=9), outlinewidth=0, thickness=10,
-                    ),
-                ),
-                text=frame["label"],
-                customdata=frame[["icao24", "altitude_ft", "speed_kmh", "heading", "nearest_airport", "distance_to_airport_km"]].values,
+                lat=frame["latitude"], lon=frame["longitude"], mode="text",
+                text=["✈"] * len(frame),
+                textfont=dict(size=17, color=CYAN),
+                customdata=frame[["label", "icao24", "altitude_ft", "speed_kmh", "heading", "nearest_airport", "distance_to_airport_km"]].values,
                 hovertemplate=(
-                    "<b>%{text}</b><br>ICAO24: %{customdata[0]}<br>"
-                    "Altitude: %{customdata[1]:,.0f} ft<br>Speed: %{customdata[2]:,.0f} km/h<br>"
-                    "Heading: %{customdata[3]:.0f}°<br>Nearest gateway: %{customdata[4]} "
-                    "(%{customdata[5]:.0f} km)<extra></extra>"
+                    "<b>%{customdata[0]}</b><br>ICAO24: %{customdata[1]}<br>"
+                    "Altitude: %{customdata[2]:,.0f} ft<br>Speed: %{customdata[3]:,.0f} km/h<br>"
+                    "Heading: %{customdata[4]:.0f}°<br>Nearest gateway: %{customdata[5]} "
+                    "(%{customdata[6]:.0f} km)<extra></extra>"
                 ),
             ))
         else:

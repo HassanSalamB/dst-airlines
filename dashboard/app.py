@@ -127,9 +127,23 @@ class LB:
             html.Span("PostgreSQL · MongoDB · Neo4j · FastAPI",style={"color":MUTED,"fontSize":"11px"}),
         ],style={"backgroundColor":CARD,"borderTop":f"1px solid {BORDER}","textAlign":"center","padding":"12px 24px"})
 
+    @staticmethod
+    def intro(label,title,description,usage,source_note):
+        return html.Div([
+            html.Div(label,style={"fontSize":"9px","fontWeight":"700","color":CYAN,"letterSpacing":"1.6px","marginBottom":"5px"}),
+            html.Div(title,style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginBottom":"5px"}),
+            html.Div(description,style={"fontSize":"11px","color":MUTED,"lineHeight":"1.55"}),
+            html.Div([html.Span("HOW TO USE · ",style={"fontWeight":"700","color":GREEN}),html.Span(usage)],style={"fontSize":"10px","color":TEXT,"marginTop":"8px"}),
+            html.Div(source_note,style={"fontSize":"9px","color":MUTED,"marginTop":"5px"}),
+        ],style={**CARD_STYLE,"padding":"14px 18px","borderLeft":f"3px solid {CYAN}","marginBottom":"12px"})
+
     def page_overview(self):
         g={"displayModeBar":False}
         return html.Div([
+            self.intro("MARKET OVERVIEW","Saudi & UAE operating picture",
+                       "Summarizes simulated flight volume, delay exposure, seasonality and route concentration for the selected market.",
+                       "Compare countries or gateways, then narrow by airline, month range or delayed status.",
+                       "Data: clearly labeled portfolio simulation; not official airline performance."),
             html.Div(id="kpi-row",style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"16px"}),
             html.Div([
                 html.Div([dcc.Graph(id="chart-monthly",config=g,style={"height":"300px"})],style={**CARD_STYLE,"flex":"3"}),
@@ -144,12 +158,18 @@ class LB:
     def page_live(self):
         g={"displayModeBar":False,"scrollZoom":True}
         columns=[
-            {"name":"Callsign","id":"callsign"},{"name":"ICAO24","id":"icao24"},
-            {"name":"Nearest gateway","id":"nearest_airport"},{"name":"Distance km","id":"distance_to_airport_km"},
+            {"name":"Callsign","id":"callsign"},{"name":"From","id":"origin"},{"name":"To","id":"destination"},
+            {"name":"Currently over","id":"current_area"},{"name":"Coordinates","id":"current_position"},
+            {"name":"Nearest gateway","id":"nearest_airport"},
+            {"name":"Distance km","id":"distance_to_airport_km"},
             {"name":"Altitude ft","id":"altitude_ft"},{"name":"Speed km/h","id":"speed_kmh"},
-            {"name":"Heading","id":"heading"},{"name":"Registration country","id":"registration_country"},
+            {"name":"Heading","id":"heading"},{"name":"Route match","id":"route_source"},
         ]
         return html.Div([
+            self.intro("LIVE AIRSPACE","Aircraft being observed now",
+                       "Shows current OpenSky aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
+                       "Choose a country and gateway, inspect current coordinates, then use altitude, speed and heading to understand the aircraft's present state.",
+                       "Positions: OpenSky · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
             html.Div([
                 html.Div([
                     html.Div("LIVE AIRSPACE",id="live-status",style={"fontSize":"11px","fontWeight":"700","letterSpacing":"1.5px","color":GREEN}),
@@ -178,6 +198,10 @@ class LB:
     def page_airlines(self):
         g={"displayModeBar":False}
         return html.Div([
+            self.intro("AIRLINE PERFORMANCE","Compare Gulf portfolio carriers",
+                       "Benchmarks simulated delay rates and the modeled contribution of carrier, weather, airspace and late-aircraft factors.",
+                       "Select a country first, compare its airlines, then choose one airline to isolate its profile.",
+                       "Data: portfolio simulation for demonstration and scenario analysis."),
             html.Div([dcc.Graph(id="chart-airline-bar",config=g,style={"height":"340px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
             html.Div([dcc.Graph(id="chart-cause-stack",config=g,style={"height":"320px"})],style=CARD_STYLE),
         ])
@@ -185,6 +209,10 @@ class LB:
     def page_routes(self):
         g={"displayModeBar":False}
         return html.Div([
+            self.intro("ROUTES & CONNECTIVITY","Find busy and delay-sensitive connections",
+                       "Combines a route heatmap, volume-versus-delay comparison and a direct Gulf airport path explorer.",
+                       "Use country, gateway and airline filters to reveal where simulated operational pressure is concentrated.",
+                       "Data: simulated Saudi/UAE origin-destination operations."),
             html.Div([dcc.Graph(id="chart-heatmap",config=g,style={"height":"480px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
             html.Div([dcc.Graph(id="chart-bubble",config=g,style={"height":"420px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
             self.page_graph(),
@@ -193,6 +221,10 @@ class LB:
     def page_trends(self):
         g={"displayModeBar":False}
         return html.Div([
+            self.intro("TRENDS","Explore seasonality and changing delay pressure",
+                       "Shows how simulated delayed-flight volume and average delay change throughout the year, plus the most affected routes.",
+                       "Adjust the month range and airline filter to compare seasonal patterns and carrier exposure.",
+                       "Data: portfolio simulation; use patterns as analytical examples, not forecasts."),
             html.Div([dcc.Graph(id="chart-monthly-2",config=g,style={"height":"360px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
             html.Div([dcc.Graph(id="chart-top-routes-2",config=g,style={"height":"320px"})],style=CARD_STYLE),
         ])
@@ -227,6 +259,10 @@ class LB:
     def page_map(self):
         g={"displayModeBar":False}
         return html.Div([
+            self.intro("AIRPORTS","Compare gateway scale and delay exposure",
+                       "Maps supported Saudi and UAE gateways; marker size represents simulated flight volume and color represents delay rate.",
+                       "Switch country or choose an airline to see which origin airports matter most for that operating context.",
+                       "Data: simulated operations; airport locations are real."),
             html.Div([dcc.Graph(id="chart-airport-map",config=g,style={"height":"500px"})],style=CARD_STYLE),
         ])
 
@@ -238,6 +274,10 @@ class LB:
             dcc.Dropdown(id=fid,options=opts,value=val,clearable=False,style=DD_STYLE,className="dst-dropdown"),
         ],style={"marginBottom":"14px"})
         return html.Div([
+            self.intro("RISK ANALYZER","Explain a route's simulated operating risk",
+                       "Combines observed simulation rates for the selected route, airline and weekday with current Open-Meteo conditions.",
+                       "Choose origin, destination, airline and day, review live weather, then run the analyzer.",
+                       "Output: explanatory portfolio scenario; not a prediction for an actual ticketed flight."),
             html.Div([
                 html.Div("⚡  Flight Risk Analyzer",style={"fontSize":"16px","fontWeight":"700","color":TEXT,"marginBottom":"4px"}),
                 html.Div("Select a Saudi or UAE flight — live weather fetched automatically from Open-Meteo API",
@@ -263,7 +303,12 @@ class LB:
                 "width":"100%","backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}",
                 "borderRadius":"8px","padding":"8px 12px","fontSize":"13px","boxSizing":"border-box"})],
             style={"marginBottom":"12px"})
-        return html.Div([html.Div([
+        return html.Div([
+            self.intro("PREDICTION LAB","Test a Gulf delay scenario",
+                       "Estimates delay probability from simulated route and carrier history plus user-supplied peak-hour and weather conditions.",
+                       "Change the route, carrier, departure hour and weather inputs to see how the scenario responds.",
+                       "Output: portfolio what-if model; not official airline or airport status."),
+            html.Div([
             html.Div("Gulf Delay Prediction Lab",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginBottom":"4px"}),
             html.Div("Scenario estimate trained from the portfolio simulation; it is not official airline status.",style={"fontSize":"12px","color":MUTED,"marginBottom":"20px"}),
             html.Div([
@@ -282,7 +327,8 @@ class LB:
                 "backgroundColor":CYAN,"color":BG,"border":"none","borderRadius":"8px",
                 "padding":"10px 28px","fontSize":"13px","fontWeight":"700","cursor":"pointer","marginTop":"8px"}),
             html.Div(id="prediction-result",style={"marginTop":"20px"}),
-        ],style={**CARD_STYLE,"maxWidth":"780px"})])
+            ],style={**CARD_STYLE,"maxWidth":"780px"}),
+        ])
 
 
 class App:
@@ -472,7 +518,11 @@ class App:
                 ],style={**CARD_STYLE,"padding":"14px 18px","borderLeft":f"3px solid {CYAN}"})
             else:
                 weather_card=html.Div("Select a gateway airport to add current Open-Meteo weather.",style={**CARD_STYLE,"fontSize":"11px","color":MUTED})
-            table_rows=[{key:row.get(key) for key in ["callsign","icao24","nearest_airport","distance_to_airport_km","altitude_ft","speed_kmh","heading","registration_country"]} for row in rows]
+            table_rows=[{key:row.get(key) for key in [
+                "callsign","origin","destination","current_area","current_position","nearest_airport",
+                "distance_to_airport_km","altitude_ft","speed_kmh","heading",
+                "route_source",
+            ]} for row in rows]
             return (
                 charts.live_aircraft_map(rows,country,airport),table_rows,status,
                 {"fontSize":"11px","fontWeight":"700","letterSpacing":"1.5px","color":color},

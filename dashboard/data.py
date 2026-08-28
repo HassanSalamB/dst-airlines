@@ -4,6 +4,7 @@ Falls back to mock data if API is unavailable.
 """
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from math import asin, cos, radians, sin, sqrt
 import pandas as pd
@@ -12,6 +13,7 @@ import requests
 
 API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
+ADSBDB_CALLSIGN_URL = "https://api.adsbdb.com/v0/callsign/{callsign}"
 GULF_BBOX = {"lamin": 16.0, "lomin": 34.0, "lamax": 33.0, "lomax": 56.5}
 
 AIRLINE_MAP = {
@@ -415,6 +417,7 @@ def api_healthy():
 
 
 _LIVE_CACHE = {"fetched_at": 0.0, "payload": None}
+_ROUTE_CACHE = {}
 
 
 def _point_in_polygon(latitude, longitude, polygon):
@@ -521,6 +524,65 @@ def _direct_opensky_payload():
     return payload
 
 
+def _route_for_callsign(callsign):
+    callsign = (callsign or "").strip().upper()
+    if not callsign:
+        return None
+    cached = _ROUTE_CACHE.get(callsign)
+    if cached and cached["expires_at"] > time.time():
+        return cached["route"]
+
+    route = None
+    try:
+        response = requests.get(ADSBDB_CALLSIGN_URL.format(callsign=callsign), timeout=5)
+        if response.status_code == 200:
+            route = response.json().get("response", {}).get("flightroute")
+    except (requests.RequestException, TypeError, ValueError):
+        pass
+    ttl = 21600 if route else 3600
+    _ROUTE_CACHE[callsign] = {"route": route, "expires_at": time.time() + ttl}
+    return route
+
+
+def _airport_label(airport):
+    if not airport:
+        return "Not available"
+    code = airport.get("iata_code") or airport.get("icao_code") or "Unknown"
+    city = airport.get("municipality") or airport.get("name") or airport.get("country_name")
+    return f"{code} · {city}" if city else code
+
+
+def _enrich_live_routes(rows):
+    """Add best-effort community route matches without fabricating unknowns."""
+    limit = max(0, min(50, int(os.getenv("ROUTE_LOOKUP_LIMIT", "30"))))
+    candidates = [row for row in rows if row.get("callsign")][:limit]
+    callsigns = sorted({row["callsign"].strip().upper() for row in candidates})
+    routes = {}
+    if callsigns:
+        with ThreadPoolExecutor(max_workers=min(8, len(callsigns))) as executor:
+            futures = {executor.submit(_route_for_callsign, callsign): callsign for callsign in callsigns}
+            for future in as_completed(futures):
+                try:
+                    routes[futures[future]] = future.result()
+                except Exception:
+                    routes[futures[future]] = None
+
+    for row in rows:
+        callsign = (row.get("callsign") or "").strip().upper()
+        route = routes.get(callsign) or (_ROUTE_CACHE.get(callsign) or {}).get("route")
+        row["origin"] = _airport_label(route.get("origin")) if route else "Not available"
+        row["destination"] = _airport_label(route.get("destination")) if route else "Not available"
+        row["route_source"] = "ADSBDB community match" if route else "No route match"
+        row["current_area"] = row.get("market_country") or "Saudi/UAE focus area"
+        latitude = row.get("latitude")
+        longitude = row.get("longitude")
+        row["current_position"] = (
+            f"{float(latitude):.3f}, {float(longitude):.3f}"
+            if latitude is not None and longitude is not None else "Not available"
+        )
+    return rows
+
+
 def get_live_flights(country=None, airport=None):
     """Get live OpenSky aircraft via FastAPI, with a direct read-only fallback."""
     params = {"limit": 500}
@@ -534,6 +596,7 @@ def get_live_flights(country=None, airport=None):
         if response.status_code == 200:
             result = response.json()
             if result.get("data"):
+                result["data"] = _enrich_live_routes(result["data"])
                 return result
     except Exception:
         pass
@@ -550,6 +613,7 @@ def get_live_flights(country=None, airport=None):
             ]
         result["data"] = rows
         result["count"] = len(rows)
+        result["data"] = _enrich_live_routes(result["data"])
         return result
     except Exception as exc:
         return {

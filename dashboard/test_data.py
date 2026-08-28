@@ -451,7 +451,9 @@ class TestGetLiveFlights:
         mock_get.return_value = mock_response
 
         result = get_live_flights()
-        assert result["data"] == [{"callsign": "TEST123"}]
+        assert result["data"][0]["callsign"] == "TEST123"
+        assert result["data"][0]["origin"] == "Not available"
+        assert result["data"][0]["destination"] == "Not available"
 
     @patch('data.requests.get')
     def test_returns_unavailable_payload_on_error(self, mock_get):

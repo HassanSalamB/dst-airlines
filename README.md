@@ -43,6 +43,7 @@ flowchart LR
     neo4j --> api
     api --> dashboard["Dash / Plotly dashboard"]
     weather["Open-Meteo API"] --> dashboard
+    routes["ADSBDB callsign route lookup"] --> dashboard
 
     prometheus["Prometheus"] -->|"scrapes /metrics"| api
     grafana["Grafana"] --> prometheus
@@ -51,8 +52,10 @@ flowchart LR
 FastAPI connects to PostgreSQL, MongoDB, and Neo4j. Dash reads current aircraft
 observations through FastAPI and calls Open-Meteo for gateway weather. If the
 local data stack is intentionally absent, the dashboard can read one cached
-OpenSky snapshot directly. OpenSky positions are not commercial schedules,
-gates, cancellations, or official delay data.
+OpenSky snapshot directly. ADSBDB adds best-effort callsign-to-route matches;
+unmatched origin or destination values remain explicitly unavailable. OpenSky
+positions and community route matches are not commercial schedules, gates,
+cancellations, or official delay data.
 
 ## Technology stack
 
