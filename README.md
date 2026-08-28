@@ -41,6 +41,7 @@ flowchart LR
     pg --> api["FastAPI<br/>16 routes"]
     mongo --> api
     neo4j --> api
+    model["Versioned calibrated CatBoost artifact"] --> api
     api --> dashboard["Dash / Plotly dashboard"]
     weather["Open-Meteo API"] --> dashboard
     routes["ADSBDB callsign route lookup"] --> dashboard
@@ -63,7 +64,7 @@ cancellations, or official delay data.
 |---|---|
 | API | Python 3.11, FastAPI, Uvicorn |
 | Dashboard | Dash, Plotly, Dash Bootstrap Components |
-| Data and ML | pandas, scikit-learn, Logistic Regression, Linear Regression |
+| Data and ML | pandas, scikit-learn, calibrated CatBoost, Logistic Regression baseline |
 | Streaming | Apache Kafka, OpenSky state-vector collector |
 | Databases | PostgreSQL 16, MongoDB 7, Neo4j 5 |
 | Containers | Docker and Docker Compose |
@@ -80,9 +81,9 @@ cancellations, or official delay data.
 ├── .github/
 │   ├── dependabot.yml
 │   └── workflows/ci-cd.yml
-├── api/                            # FastAPI, tests, and Dockerfiles
+├── api/                            # FastAPI, versioned ML artifact, tests, and Dockerfiles
 ├── collector/                      # OpenSky → Kafka → MongoDB live pipeline
-├── dashboard/                      # Dash UI, charts, weather, ML, and tests
+├── dashboard/                      # Dash UI, charts, weather, ML training, and tests
 ├── database/                       # Setup code and SQL schema/test fixtures
 ├── docs/CI_CD.md                   # CI/CD implementation details
 ├── k8s/                            # Kubernetes resources

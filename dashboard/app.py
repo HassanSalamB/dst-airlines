@@ -1,7 +1,8 @@
 """
 app.py — DST Airlines Dashboard v4 — FINAL
 """
-import pickle
+from datetime import date
+
 import requests
 import pandas as pd
 import numpy as np
@@ -29,14 +30,13 @@ AIRLINE_NAMES={name:name for name in GULF_AIRLINES}
 CARD_STYLE={"backgroundColor":CARD,"border":f"1px solid {BORDER}","borderRadius":"12px","padding":"20px"}
 DD_STYLE={"backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}","borderRadius":"8px","fontSize":"13px"}
 
-_MODELS=None
-def get_models():
-    global _MODELS
-    if _MODELS is None:
-        try:
-            with open("/app/models.pkl","rb") as f: _MODELS=pickle.load(f)
-        except: _MODELS={}
-    return _MODELS
+def get_ml_status():
+    try:
+        response = requests.get(f"{API_BASE_URL}/model/gulf/status", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as exc:
+        return {"available": False, "reason": f"Prediction API unavailable: {exc}"}
 
 def _airport_opts(df,col):
     vals=sorted(df[col].dropna().unique()) if col in df.columns else list(AIRPORTS.keys())
@@ -65,7 +65,8 @@ class LB:
         nav=[("◉","Live Airspace","live"),("▣","Historical Overview","overview"),
              ("✈","Airlines","airlines"),("🗺","Airports","map"),
              ("⬡","Routes","routes"),("▲","Trends","trends"),
-             ("◈","Risk Analyzer","risk"),("⌁","Prediction Lab","predict")]
+             ("◈","Risk Analyzer","risk"),("◆","ML Intelligence","ml"),
+             ("⌁","Prediction Lab","predict")]
         links=[html.Div(id=f"nav-{pid}",children=[
             html.Span(icon,style={"width":"20px","display":"inline-block","textAlign":"center","fontSize":"14px","marginRight":"10px","color":CYAN}),
             html.Span(label,style={"fontSize":"13px","whiteSpace":"nowrap","fontWeight":"500"})],
@@ -316,6 +317,102 @@ class LB:
             html.Div(id="risk-result",style={"marginTop":"16px"}),
         ])
 
+    def page_ml(self, status, charts):
+        if not status.get("available"):
+            return html.Div([
+                self.intro(
+                    "ML INTELLIGENCE", "Model governance and evaluation",
+                    "Shows which delay model is serving predictions, how it compares with the baseline and whether its probabilities are calibrated.",
+                    "Start the prediction API or deploy the API container to load the model artifact.",
+                    "No heuristic is presented as a trained model.",
+                ),
+                html.Div([
+                    html.Div("MODEL UNAVAILABLE",style={"fontSize":"11px","fontWeight":"700","color":AMBER,"letterSpacing":"1.4px"}),
+                    html.Div(status.get("reason","Model artifact could not be loaded."),style={"fontSize":"13px","color":TEXT,"marginTop":"8px"}),
+                ],style={**CARD_STYLE,"borderLeft":f"3px solid {AMBER}"}),
+            ])
+
+        metrics = status.get("metrics", {})
+        champion_metrics = metrics.get(status.get("champion"), {})
+        metric_rows = [
+            {
+                "model": model,
+                "roc_auc": values.get("roc_auc"),
+                "pr_auc": values.get("pr_auc"),
+                "brier": values.get("brier"),
+                "recall": values.get("recall"),
+            }
+            for model, values in metrics.items()
+        ]
+        summary_card = lambda label, value, note, color: html.Div([
+            html.Div(label,style={"fontSize":"9px","fontWeight":"700","letterSpacing":"1.4px","color":MUTED}),
+            html.Div(value,style={"fontSize":"26px","fontWeight":"700","color":color,"margin":"6px 0"}),
+            html.Div(note,style={"fontSize":"10px","color":MUTED,"lineHeight":"1.4"}),
+        ],style={**CARD_STYLE,"flex":"1","minWidth":"150px","padding":"16px"})
+        deployment_steps = [
+            ("1", "Offline training", "2023 fit · 2024 calibration · 2025 evaluation"),
+            ("2", "Versioned artifact", status.get("version", "Unknown version")),
+            ("3", "FastAPI inference", "Artifact loaded once and retained in API memory"),
+            ("4", "Dashboard consumer", "Prediction Lab calls POST /predict/gulf"),
+        ]
+        return html.Div([
+            self.intro(
+                "ML INTELLIGENCE", "Delay model control room",
+                "Separates model quality, explainability and deployment health from operational analytics and scenario inputs.",
+                "Review the champion against its baseline, inspect probability calibration and feature importance, then use Prediction Lab for a scenario.",
+                status.get("limitations","Portfolio simulation; not an official airline forecast."),
+            ),
+            html.Div([
+                summary_card("CHAMPION", "CatBoost", status.get("algorithm",""), CYAN),
+                summary_card("ROC-AUC", f"{champion_metrics.get('roc_auc',0):.3f}", "Ranking quality on untouched 2025 data", GREEN),
+                summary_card("BRIER SCORE", f"{champion_metrics.get('brier',0):.3f}", "Probability error · lower is better", PURPLE),
+                summary_card("TEST SET", f"{status.get('test_rows',0):,}", "2025 simulated operations", TEXT),
+            ],style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"12px"}),
+            html.Div([
+                html.Div([
+                    html.Div("MODEL CARD",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px","marginBottom":"10px"}),
+                    html.Div(f"{status.get('champion')} · {status.get('version')}",style={"fontSize":"15px","fontWeight":"700","color":TEXT}),
+                    html.Div(f"Data: {status.get('data_scope')}",style={"fontSize":"11px","color":MUTED,"marginTop":"8px"}),
+                    html.Div(f"Fit {status.get('fit_year')} → calibrate {status.get('calibration_year')} → evaluate {status.get('evaluation_year')}",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
+                    html.Div(f"Rows: {status.get('training_rows',0):,} fit · {status.get('calibration_rows',0):,} calibration · {status.get('test_rows',0):,} evaluation",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
+                    html.Div(status.get("selection_reason",""),style={"fontSize":"10px","color":CYAN,"marginTop":"10px","lineHeight":"1.5"}),
+                ],style={**CARD_STYLE,"flex":"1"}),
+                html.Div([
+                    html.Div("DEPLOYMENT STATUS",style={"fontSize":"10px","fontWeight":"700","color":GREEN,"letterSpacing":"1.4px","marginBottom":"10px"}),
+                    html.Div("● MODEL LOADED",style={"fontSize":"13px","fontWeight":"700","color":GREEN}),
+                    html.Div("Serving through FastAPI · dashboard does not deserialize the model",style={"fontSize":"11px","color":MUTED,"marginTop":"8px"}),
+                ],style={**CARD_STYLE,"flex":"1","borderLeft":f"3px solid {GREEN}"}),
+            ],style={"display":"flex","gap":"12px","marginBottom":"12px"}),
+            html.Div([dcc.Graph(figure=charts.ml_metric_comparison(metrics),config={"displayModeBar":False},style={"height":"360px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
+            html.Div([
+                html.Div([dcc.Graph(figure=charts.ml_feature_importance(status.get("feature_importance",[])),config={"displayModeBar":False},style={"height":"390px"})],style={**CARD_STYLE,"flex":"1"}),
+                html.Div([dcc.Graph(figure=charts.ml_calibration(status.get("calibration",[])),config={"displayModeBar":False},style={"height":"390px"})],style={**CARD_STYLE,"flex":"1"}),
+            ],style={"display":"flex","gap":"12px","marginBottom":"12px"}),
+            html.Div([
+                html.Div("EVALUATION TABLE",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px","marginBottom":"10px"}),
+                dash_table.DataTable(
+                    data=metric_rows,
+                    columns=[
+                        {"name":"Model","id":"model"},{"name":"ROC-AUC ↑","id":"roc_auc"},
+                        {"name":"PR-AUC ↑","id":"pr_auc"},{"name":"Brier ↓","id":"brier"},
+                        {"name":"Recall ↑","id":"recall"},
+                    ],
+                    style_header={"backgroundColor":SURFACE,"color":MUTED,"border":f"1px solid {BORDER}","fontWeight":"700"},
+                    style_cell={"backgroundColor":CARD,"color":TEXT,"border":f"1px solid {BORDER}","fontSize":"11px","padding":"9px","textAlign":"left"},
+                ),
+            ],style={**CARD_STYLE,"marginBottom":"12px"}),
+            html.Div([
+                html.Div("DEPLOYMENT PATH",style={"fontSize":"10px","fontWeight":"700","color":PURPLE,"letterSpacing":"1.4px","marginBottom":"12px"}),
+                html.Div([
+                    html.Div([
+                        html.Div(number,style={"width":"24px","height":"24px","borderRadius":"50%","backgroundColor":PURPLE,"color":TEXT,"display":"flex","alignItems":"center","justifyContent":"center","fontSize":"10px","fontWeight":"700"}),
+                        html.Div([html.Div(title,style={"fontSize":"12px","fontWeight":"700","color":TEXT}),html.Div(note,style={"fontSize":"10px","color":MUTED,"marginTop":"4px","lineHeight":"1.4"})],style={"marginLeft":"10px"}),
+                    ],style={"display":"flex","alignItems":"flex-start","flex":"1","minWidth":"180px"})
+                    for number,title,note in deployment_steps
+                ],style={"display":"flex","gap":"18px","flexWrap":"wrap"}),
+            ],style=CARD_STYLE),
+        ])
+
     def page_predict(self):
         fld=lambda lbl,ph,fid,typ="number": html.Div([
             html.Div(lbl,style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
@@ -325,7 +422,7 @@ class LB:
             style={"marginBottom":"12px"})
         return html.Div([
             self.intro("PREDICTION LAB","Test a Gulf delay scenario",
-                       "Estimates delay probability from simulated route and carrier history plus user-supplied peak-hour and weather conditions.",
+                       "Uses the calibrated CatBoost model served by FastAPI to estimate delay probability from portfolio route, carrier, calendar and weather features.",
                        "Change the route, carrier, departure hour and weather inputs to see how the scenario responds.",
                        "Output: portfolio what-if model; not official airline or airport status."),
             html.Div([
@@ -339,6 +436,10 @@ class LB:
                     dcc.Dropdown(id="pred-dest",options=[{"label":code,"value":code} for code in GULF_COUNTRIES["Saudi Arabia"]["airports"]|GULF_COUNTRIES["United Arab Emirates"]["airports"]],value="DXB",clearable=False,style=DD_STYLE,className="dst-dropdown"),
                     html.Div("Airline",style={"color":MUTED,"fontSize":"11px","margin":"12px 0 5px"}),
                     dcc.Dropdown(id="pred-airline",options=[{"label":name,"value":name} for name in GULF_AIRLINES],value="Riyadh Air",clearable=False,style=DD_STYLE,className="dst-dropdown"),
+                    html.Div("Flight date",style={"color":MUTED,"fontSize":"11px","margin":"12px 0 5px"}),
+                    dcc.Input(id="pred-date",type="date",value=date.today().isoformat(),style={
+                        "width":"100%","backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}",
+                        "borderRadius":"8px","padding":"8px 12px","fontSize":"13px","boxSizing":"border-box"}),
                 ],style={"flex":"1"}),
                 html.Div([fld("Departure hour (0–23)","18","pred-hour"),fld("Wind (km/h)","25","pred-wind"),
                           fld("Precipitation (mm)","0","pred-precip"),fld("Cloud cover (%)","20","pred-cloud")],style={"flex":"1"}),
@@ -385,9 +486,9 @@ class App:
             return html.Div(l,style={"fontSize":"10px","fontWeight":"700","color":c,"border":f"1px solid {c}","borderRadius":"20px","padding":"3px 10px"})
 
         app.clientside_callback(
-            "function(a,b,c,d,e,f,g,h,cur){const t=dash_clientside.callback_context.triggered;if(!t||!t.length)return cur;return t[0].prop_id.split('.')[0].replace('nav-','');}",
+            "function(a,b,c,d,e,f,g,h,i,cur){const t=dash_clientside.callback_context.triggered;if(!t||!t.length)return cur;return t[0].prop_id.split('.')[0].replace('nav-','');}",
             Output("page","data"),
-            [Input(f"nav-{p}","n_clicks") for p in ["live","overview","airlines","map","routes","trends","risk","predict"]],
+            [Input(f"nav-{p}","n_clicks") for p in ["live","overview","airlines","map","routes","trends","risk","ml","predict"]],
             State("page","data"),prevent_initial_call=True)
 
         @app.callback(
@@ -426,11 +527,16 @@ class App:
             df=_f(country,airport,a,year,m,d)
             titles={"overview":"Historical Operations · Portfolio Simulation","airlines":"Airline Performance","routes":"Routes & Connectivity",
                     "trends":"Monthly Trends","risk":"◈ Gulf Flight Risk Analyzer","map":"🗺 Saudi & UAE Airport Map",
-                    "live":"◉ Live Gulf Airspace","predict":"⌁ Prediction Lab"}
+                    "live":"◉ Live Gulf Airspace","ml":"◆ ML Intelligence","predict":"⌁ Prediction Lab"}
             pages={"live":lb.page_live,"overview":lb.page_overview,"airlines":lb.page_airlines,
                    "routes":lb.page_routes,"trends":lb.page_trends,"map":lb.page_map,
                    "predict":lb.page_predict}
-            content=lb.page_risk(df) if page=="risk" else pages.get(page,lb.page_overview)()
+            if page == "risk":
+                content = lb.page_risk(df)
+            elif page == "ml":
+                content = lb.page_ml(get_ml_status(), charts)
+            else:
+                content = pages.get(page,lb.page_overview)()
             return content,titles.get(page,"Dashboard")
 
         @app.callback(
@@ -696,29 +802,42 @@ class App:
         @app.callback(
             Output("prediction-result","children"),Input("btn-predict","n_clicks"),
             State("pred-origin","value"),State("pred-dest","value"),State("pred-airline","value"),
+            State("pred-date","value"),
             State("pred-hour","value"),State("pred-wind","value"),State("pred-precip","value"),State("pred-cloud","value"),
             prevent_initial_call=True,
         )
-        def predict_scenario(_,origin,dest,airline,hour,wind,precip,cloud):
+        def predict_scenario(_,origin,dest,airline,flight_date,hour,wind,precip,cloud):
             if origin==dest:
                 return html.Div("Select two different Gulf airports.",style={"color":AMBER})
-            if any(value is None for value in [hour,wind,precip,cloud]):
-                return html.Div("Enter all four operating-condition inputs.",style={"color":AMBER})
+            if any(value is None for value in [flight_date,hour,wind,precip,cloud]):
+                return html.Div("Enter the date and all four operating-condition inputs.",style={"color":AMBER})
             frame=get_gulf_flights_df()
             route=frame[(frame["Origin"]==origin)&(frame["Dest"]==dest)]
-            carrier=frame[frame["Operating_Airline"]==airline]
-            baseline=float(route["Delayed"].mean() if not route.empty else frame["Delayed"].mean())
-            carrier_rate=float(carrier["Delayed"].mean() if not carrier.empty else baseline)
-            peak_adjust=0.08 if int(hour) in [6,7,8,17,18,19,20] else 0
-            weather_adjust=min(0.30,float(wind)/400+float(precip)/60+float(cloud)/1000)
-            probability=max(0.03,min(0.92,baseline*0.55+carrier_rate*0.25+peak_adjust+weather_adjust))
+            distance=float(route["Distance"].median() if not route.empty else frame["Distance"].median())
+            payload={
+                "origin":origin,"destination":dest,"airline":airline,
+                "flight_date":flight_date,"distance":distance,
+                "departure_hour":int(hour),"wind_kmh":float(wind),
+                "precipitation_mm":float(precip),"cloud_cover_pct":float(cloud),
+            }
+            try:
+                response=requests.post(f"{API_BASE_URL}/predict/gulf",json=payload,timeout=12)
+                response.raise_for_status()
+                prediction=response.json()
+            except requests.RequestException as exc:
+                return html.Div([
+                    html.Div("MODEL SERVICE UNAVAILABLE",style={"fontSize":"11px","fontWeight":"700","color":AMBER,"letterSpacing":"1.4px"}),
+                    html.Div(str(exc),style={"fontSize":"11px","color":MUTED,"marginTop":"8px"}),
+                ],style={**CARD_STYLE,"borderLeft":f"3px solid {AMBER}"})
+            probability=float(prediction["delay_probability"])
             color=GREEN if probability<0.30 else AMBER if probability<0.60 else RED
-            label="LOW" if probability<0.30 else "MEDIUM" if probability<0.60 else "HIGH"
+            label=prediction["risk_band"]
             return html.Div([
                 html.Div(f"{label} DELAY RISK",style={"fontSize":"11px","fontWeight":"700","letterSpacing":"1.4px","color":color}),
                 html.Div(f"{probability*100:.1f}%",style={"fontSize":"38px","fontWeight":"700","color":color,"margin":"5px 0"}),
-                html.Div(f"{airline} · {origin} → {dest} · departure hour {int(hour):02d}:00",style={"fontSize":"12px","color":TEXT}),
-                html.Div("Scenario estimate combines simulated route/carrier history with your weather and peak-hour inputs. Not an official flight prediction.",style={"fontSize":"10px","color":MUTED,"marginTop":"8px"}),
+                html.Div(f"{airline} · {origin} → {dest} · {flight_date} at {int(hour):02d}:00",style={"fontSize":"12px","color":TEXT}),
+                html.Div(f"{prediction['algorithm']} · {prediction['model_version']}",style={"fontSize":"10px","color":CYAN,"marginTop":"8px"}),
+                html.Div(prediction["limitations"],style={"fontSize":"10px","color":MUTED,"marginTop":"5px"}),
             ],style={**CARD_STYLE,"borderLeft":f"3px solid {color}"})
 
 

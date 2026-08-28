@@ -89,6 +89,7 @@ services:
       NEO4J_USER: neo4j
       NEO4J_PASS: ${NEO4J_PASSWORD}
       MODEL_PATH: /app/logistic_regression.pkl
+      GULF_MODEL_PATH: /app/gulf_delay_model.joblib
       DEBUG: "true"
     volumes:
       - ./api:/app

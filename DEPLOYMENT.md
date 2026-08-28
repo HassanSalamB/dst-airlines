@@ -13,6 +13,23 @@ Replace all placeholders. Never commit populated copies.
 
 ## Docker development
 
+The committed Gulf model artifact is produced by a chronological training flow:
+2023 fit, 2024 probability calibration, and 2025 evaluation. Retrain it before
+building the API image whenever the portfolio dataset or feature contract changes:
+
+```bash
+cd dashboard
+uv run --python 3.11 \
+  --with pandas==2.2.2 --with numpy==1.26.4 --with requests==2.32.3 \
+  --with scikit-learn==1.4.2 --with catboost==1.2.8 --with joblib==1.4.2 \
+  train_gulf_ml.py
+cd ..
+```
+
+The API image loads `api/gulf_delay_model.joblib` once, serves model metadata at
+`GET /model/gulf/status`, and scores scenarios at `POST /predict/gulf`. The
+dashboard consumes those endpoints and never deserializes the estimator.
+
 ```bash
 docker compose --env-file .env.dev -f docker-compose.dev.yml up --build -d
 docker compose --env-file .env.dev -f docker-compose.dev.yml ps

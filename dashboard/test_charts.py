@@ -48,3 +48,31 @@ def test_live_map_omits_dotted_route_without_both_airport_coordinates():
     figure = ChartFactory().live_aircraft_map(rows, "Saudi Arabia", "RUH")
 
     assert all(trace.line.dash != "dot" for trace in figure.data)
+
+
+def test_ml_evaluation_charts_render_model_metadata():
+    charts = ChartFactory()
+    metrics = {
+        "Calibrated CatBoost": {
+            "roc_auc": 0.628, "pr_auc": 0.585, "brier": 0.235, "recall": 0.368,
+        },
+        "Logistic Regression": {
+            "roc_auc": 0.618, "pr_auc": 0.588, "brier": 0.238, "recall": 0.549,
+        },
+    }
+    features = [
+        {"feature": "PrecipitationMm", "importance": 33.7},
+        {"feature": "Operating_Airline", "importance": 20.7},
+    ]
+    calibration = [
+        {"predicted": 0.25, "observed": 0.30},
+        {"predicted": 0.65, "observed": 0.70},
+    ]
+
+    comparison = charts.ml_metric_comparison(metrics)
+    importance = charts.ml_feature_importance(features)
+    calibrated = charts.ml_calibration(calibration)
+
+    assert len(comparison.data) == 2
+    assert len(importance.data) == 1
+    assert len(calibrated.data) == 2

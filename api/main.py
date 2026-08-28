@@ -29,6 +29,7 @@ import logging
 from datetime import date
 from typing import Optional, List
 
+import joblib
 import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
@@ -47,6 +48,7 @@ NEO4J_URL = os.getenv("NEO4J_URL", "bolt://neo4j:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS")
 MODEL_PATH = os.getenv("MODEL_PATH", "logistic_regression.pkl")
+GULF_MODEL_PATH = os.getenv("GULF_MODEL_PATH", "gulf_delay_model.joblib")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DB Clients (lazy init)
@@ -101,6 +103,20 @@ def get_model():
     return _model
 
 
+_gulf_model_bundle = None
+
+
+def get_gulf_model_bundle():
+    global _gulf_model_bundle
+    if _gulf_model_bundle is None:
+        try:
+            _gulf_model_bundle = joblib.load(GULF_MODEL_PATH)
+            log.info("Gulf delay model loaded: %s", GULF_MODEL_PATH)
+        except Exception as exc:
+            log.warning("Gulf model artifact unavailable (%s): %s", GULF_MODEL_PATH, exc)
+    return _gulf_model_bundle
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Pydantic schemas
 # ═══════════════════════════════════════════════════════════════════════════
@@ -136,6 +152,29 @@ class PredictResponse(BaseModel):
     delay_probabilities: Optional[List[float]]
     rows_predicted:     int
     counts:             dict
+
+
+class GulfPredictionInput(BaseModel):
+    origin: str
+    destination: str
+    airline: str
+    flight_date: date
+    distance: float
+    departure_hour: int
+    wind_kmh: float
+    precipitation_mm: float
+    cloud_cover_pct: float
+
+
+class GulfPredictionResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
+    delay_probability: float
+    risk_band: str
+    model_version: str
+    algorithm: str
+    data_scope: str
+    limitations: str
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -667,6 +706,55 @@ def insert_live_flight(flight: dict):
 
 
 # ── ML Prediction ─────────────────────────────────────────────────────────
+@app.get("/model/gulf/status", tags=["ML"])
+def gulf_model_status():
+    """Return model-card metadata without exposing the serialized estimator."""
+    bundle = get_gulf_model_bundle()
+    if bundle is None:
+        return {
+            "available": False,
+            "version": None,
+            "reason": "Model artifact is not available",
+        }
+    return bundle["metadata"]
+
+
+@app.post("/predict/gulf", response_model=GulfPredictionResponse, tags=["ML"])
+def predict_gulf_delay(payload: GulfPredictionInput):
+    """Score one transparent Saudi/UAE portfolio delay scenario."""
+    bundle = get_gulf_model_bundle()
+    if bundle is None:
+        raise HTTPException(503, "Gulf delay model not loaded")
+    if payload.origin == payload.destination:
+        raise HTTPException(422, "Origin and destination must differ")
+    if not 0 <= payload.departure_hour <= 23:
+        raise HTTPException(422, "Departure hour must be between 0 and 23")
+
+    features = pd.DataFrame([{
+        "Operating_Airline": payload.airline,
+        "Origin": payload.origin.upper(),
+        "Dest": payload.destination.upper(),
+        "DayOfWeek": payload.flight_date.strftime("%A"),
+        "Distance": payload.distance,
+        "Month": payload.flight_date.month,
+        "DepartureHour": payload.departure_hour,
+        "WindKmh": max(0, payload.wind_kmh),
+        "PrecipitationMm": max(0, payload.precipitation_mm),
+        "CloudCoverPct": min(100, max(0, payload.cloud_cover_pct)),
+    }])[bundle["features"]]
+    probability = float(bundle["model"].predict_proba(features)[0, 1])
+    risk_band = "LOW" if probability < 0.30 else "MEDIUM" if probability < 0.60 else "HIGH"
+    metadata = bundle["metadata"]
+    return GulfPredictionResponse(
+        delay_probability=probability,
+        risk_band=risk_band,
+        model_version=metadata["version"],
+        algorithm=metadata["algorithm"],
+        data_scope=metadata["data_scope"],
+        limitations=metadata["limitations"],
+    )
+
+
 @app.post("/predict", response_model=PredictResponse, tags=["ML"])
 def predict(payload: PredictRequest):
     """Predict flight delays using the trained ML model."""

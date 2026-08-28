@@ -169,6 +169,13 @@ def _gulf_mock(n=6000):
         for origin in origins
     ]
 
+    departure_hour = rng.integers(0, 24, size=n)
+    wind_kmh = np.round(np.clip(rng.gamma(2.2, 8.0, n), 0, 75), 1)
+    precipitation_mm = np.round(
+        np.where(rng.random(n) < 0.16, rng.gamma(1.4, 3.2, n), 0), 1
+    )
+    cloud_cover_pct = np.round(np.clip(rng.beta(1.8, 3.2, n) * 100, 0, 100), 1)
+
     dates = rng.choice(
         pd.date_range(
             f"{GULF_ANALYTICS_YEARS[0]}-01-01",
@@ -184,6 +191,10 @@ def _gulf_mock(n=6000):
     }
     base_delay = np.array([airport_delay[airport] for airport in origins], dtype=float)
     base_delay += np.array([airline_delay[airline] for airline in airlines])
+    base_delay += np.where(np.isin(departure_hour, [6, 7, 8, 17, 18, 19, 20]), 6.5, 0)
+    base_delay += np.clip(wind_kmh - 25, 0, None) * 0.18
+    base_delay += precipitation_mm * 1.4
+    base_delay += np.clip(cloud_cover_pct - 65, 0, None) * 0.05
     disruption = rng.binomial(1, 0.17, n) * rng.exponential(28, n)
     dep_delay = np.round(np.clip(base_delay + rng.normal(0, 10, n) + disruption, -20, 180), 1)
     delayed = (dep_delay > 15).astype(int)
@@ -199,6 +210,10 @@ def _gulf_mock(n=6000):
         "OriginCountry": [GULF_AIRPORT_COUNTRY[airport] for airport in origins],
         "DestCountry": [GULF_AIRPORT_COUNTRY[airport] for airport in destinations],
         "Distance": [_distance_miles(origin, destination) for origin, destination in zip(origins, destinations)],
+        "DepartureHour": departure_hour,
+        "WindKmh": wind_kmh,
+        "PrecipitationMm": precipitation_mm,
+        "CloudCoverPct": cloud_cover_pct,
         "DepDelay": dep_delay,
         "ArrDelay": np.round(np.clip(dep_delay + rng.normal(-2, 5, n), -30, 190), 1),
         "Delayed": delayed,

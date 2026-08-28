@@ -111,6 +111,15 @@ class TestGulfPortfolioData:
         assert sorted(frame["Year"].unique()) == GULF_ANALYTICS_YEARS
         assert frame["FlightDate"].max().year == GULF_ANALYTICS_YEARS[-1]
 
+    def test_gulf_dataset_contains_model_weather_and_time_features(self):
+        frame = get_gulf_flights_df()
+        required = {
+            "DepartureHour", "WindKmh", "PrecipitationMm", "CloudCoverPct",
+        }
+        assert required.issubset(frame.columns)
+        assert frame["DepartureHour"].between(0, 23).all()
+        assert frame["CloudCoverPct"].between(0, 100).all()
+
     def test_country_and_gateway_filters_drive_the_data(self):
         frame = get_gulf_flights_df("Saudi Arabia", "RUH")
         assert not frame.empty

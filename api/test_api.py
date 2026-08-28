@@ -309,6 +309,36 @@ class TestPredict:
         assert response.status_code == 422  # Validation error
 
 
+class TestGulfPredictionModel:
+    """Test the deployed Saudi/UAE portfolio model."""
+
+    def test_model_status_exposes_evaluation_metadata(self):
+        response = client.get("/model/gulf/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available"] is True
+        assert data["champion"] == "Calibrated CatBoost"
+        assert "Logistic Regression" in data["metrics"]
+
+    def test_gulf_prediction_returns_calibrated_probability(self):
+        response = client.post("/predict/gulf", json={
+            "origin": "RUH",
+            "destination": "DXB",
+            "airline": "Riyadh Air",
+            "flight_date": "2026-09-12",
+            "distance": 545,
+            "departure_hour": 18,
+            "wind_kmh": 25,
+            "precipitation_mm": 0,
+            "cloud_cover_pct": 20,
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert 0 <= data["delay_probability"] <= 1
+        assert data["risk_band"] in {"LOW", "MEDIUM", "HIGH"}
+        assert data["model_version"] == "gulf-delay-portfolio-v1"
+
+
 class TestLive:
     """Test GET /live endpoint."""
 

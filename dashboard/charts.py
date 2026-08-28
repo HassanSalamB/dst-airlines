@@ -561,6 +561,62 @@ class ChartFactory:
         )
         return fig
 
+    def ml_metric_comparison(self, metrics: dict) -> go.Figure:
+        labels = {
+            "roc_auc": "ROC-AUC",
+            "pr_auc": "PR-AUC",
+            "recall": "Recall",
+            "brier": "Brier ↓",
+        }
+        fig = go.Figure()
+        for index, (model, values) in enumerate(metrics.items()):
+            fig.add_trace(go.Bar(
+                name=model,
+                x=[labels[key] for key in labels],
+                y=[values.get(key, 0) for key in labels],
+                marker_color=CYAN if index == 0 else PURPLE,
+                text=[f"{values.get(key, 0):.3f}" for key in labels],
+                textposition="outside",
+                hovertemplate="%{x}: <b>%{y:.4f}</b><extra>%{fullData.name}</extra>",
+            ))
+        layout = _base("Model comparison · untouched 2025 evaluation set", margin_t=55)
+        layout.update(barmode="group", yaxis=dict(range=[0, 0.75], gridcolor=GRID))
+        fig.update_layout(**layout)
+        return fig
+
+    def ml_feature_importance(self, features: list[dict]) -> go.Figure:
+        frame = pd.DataFrame(features).sort_values("importance", ascending=True)
+        fig = go.Figure(go.Bar(
+            x=frame["importance"], y=frame["feature"], orientation="h",
+            marker=dict(color=frame["importance"], colorscale=[[0, BLUE], [1, CYAN]]),
+            hovertemplate="%{y}: <b>%{x:.2f}</b><extra></extra>",
+        ))
+        layout = _base("CatBoost feature importance", margin_t=55)
+        layout.update(margin=dict(l=120, r=24, t=55, b=45), showlegend=False)
+        fig.update_layout(**layout)
+        return fig
+
+    def ml_calibration(self, points: list[dict]) -> go.Figure:
+        frame = pd.DataFrame(points)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=[0, 1], y=[0, 1], mode="lines", name="Perfect calibration",
+            line=dict(color=MUTED, width=1.5, dash="dash"), hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=frame["predicted"], y=frame["observed"], mode="lines+markers",
+            name="Calibrated CatBoost", line=dict(color=GREEN, width=2.5),
+            marker=dict(size=8, color=CARD, line=dict(color=GREEN, width=2)),
+            hovertemplate="Predicted: %{x:.1%}<br>Observed: %{y:.1%}<extra></extra>",
+        ))
+        layout = _base("Probability calibration · predicted versus observed", margin_t=55)
+        layout.update(
+            xaxis=dict(title="Predicted probability", range=[0, 1], gridcolor=GRID, tickformat=".0%"),
+            yaxis=dict(title="Observed delay rate", range=[0, 1], gridcolor=GRID, tickformat=".0%"),
+        )
+        fig.update_layout(**layout)
+        return fig
+
     def risk_gauge(self, probability: float) -> go.Figure:
         GREEN="#10b981"; AMBER="#f59e0b"; RED="#ef4444"
         if probability < 0.3:   color=GREEN; label="LOW RISK"
