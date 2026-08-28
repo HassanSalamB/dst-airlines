@@ -26,9 +26,7 @@ from data import (
     AIRPORTS,
     GULF_AIRLINES,
     GULF_COUNTRIES,
-    _LIVE_TRACKS,
-    _LIVE_TRACK_LAST_SEEN,
-    _attach_live_trails,
+    _enrich_live_routes,
     _mock,
     _market_for_position,
     get_gulf_flights_df,
@@ -122,24 +120,27 @@ class TestGulfPortfolioData:
         assert _market_for_position(25.20, 55.27) == "United Arab Emirates"
         assert _market_for_position(32.08, 34.78) is None
 
-    def test_live_trail_keeps_distinct_successive_observations(self):
-        _LIVE_TRACKS.clear()
-        _LIVE_TRACK_LAST_SEEN.clear()
-        first = [{
-            "icao24": "abc123", "latitude": 24.70, "longitude": 46.60,
-            "snapshot_time": 100,
-        }]
-        second = [{
-            "icao24": "abc123", "latitude": 24.75, "longitude": 46.70,
-            "snapshot_time": 130,
-        }]
+    @patch("data._route_for_callsign")
+    def test_live_route_includes_real_airport_coordinates(self, route_lookup):
+        route_lookup.return_value = {
+            "origin": {
+                "iata_code": "CAI", "municipality": "Cairo",
+                "latitude": 30.1219, "longitude": 31.4056,
+            },
+            "destination": {
+                "iata_code": "DXB", "municipality": "Dubai",
+                "latitude": 25.2528, "longitude": 55.3644,
+            },
+        }
+        row = _enrich_live_routes([{
+            "icao24": "abc123", "callsign": "UAE71J",
+            "latitude": 25.1, "longitude": 54.9,
+        }])[0]
 
-        assert len(_attach_live_trails(first)[0]["trail"]) == 1
-        assert len(_attach_live_trails(second)[0]["trail"]) == 2
-        assert len(_attach_live_trails(second)[0]["trail"]) == 2
-
-        _LIVE_TRACKS.clear()
-        _LIVE_TRACK_LAST_SEEN.clear()
+        assert row["origin_latitude"] == 30.1219
+        assert row["origin_longitude"] == 31.4056
+        assert row["destination_latitude"] == 25.2528
+        assert row["destination_longitude"] == 55.3644
 
 
 # ═══════════════════════════════════════════════════════════════════════════

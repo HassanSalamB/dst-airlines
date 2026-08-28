@@ -9,7 +9,7 @@ def test_aircraft_silhouette_rotates_toward_heading():
     assert east_facing[0][1] > 46.7
 
 
-def test_live_map_uses_plane_shapes_and_directional_tracks():
+def test_live_map_uses_large_plane_shapes_and_matched_routes():
     rows = [{
         "icao24": "abc123",
         "callsign": "TEST1",
@@ -20,15 +20,31 @@ def test_live_map_uses_plane_shapes_and_directional_tracks():
         "heading": 90,
         "nearest_airport": "RUH",
         "distance_to_airport_km": 15,
-        "trail": [
-            {"latitude": 24.75, "longitude": 46.55, "time": 100},
-            {"latitude": 24.75, "longitude": 46.70, "time": 130},
-        ],
+        "origin": "CAI · Cairo",
+        "origin_latitude": 30.1219,
+        "origin_longitude": 31.4056,
+        "destination": "DXB · Dubai",
+        "destination_latitude": 25.2528,
+        "destination_longitude": 55.3644,
     }]
 
     figure = ChartFactory().live_aircraft_map(rows, "Saudi Arabia", "RUH")
 
-    assert figure.data[0].name == "Observed trail"
-    assert figure.data[1].name == "10-min heading guide"
+    assert figure.data[0].name == "Matched origin–destination route"
     assert any(trace.fill == "toself" for trace in figure.data)
     assert not any(getattr(trace.marker, "symbol", None) == "arrow-up" for trace in figure.data)
+
+
+def test_live_map_omits_dotted_route_without_both_airport_coordinates():
+    rows = [{
+        "icao24": "abc123", "callsign": "TEST1",
+        "latitude": 24.75, "longitude": 46.70,
+        "altitude_ft": 18000, "speed_kmh": 720, "heading": 90,
+        "nearest_airport": "RUH", "distance_to_airport_km": 15,
+        "origin_latitude": None, "origin_longitude": None,
+        "destination_latitude": None, "destination_longitude": None,
+    }]
+
+    figure = ChartFactory().live_aircraft_map(rows, "Saudi Arabia", "RUH")
+
+    assert all(trace.line.dash != "dot" for trace in figure.data)

@@ -35,7 +35,7 @@ def _offset_geo_point(latitude: float, longitude: float, east_km: float, north_k
     return latitude + latitude_delta, longitude + longitude_delta
 
 
-def _aircraft_polygon(latitude: float, longitude: float, heading: float, scale_km: float = 30):
+def _aircraft_polygon(latitude: float, longitude: float, heading: float, scale_km: float = 55):
     """Return a recognizable aircraft silhouette rotated to a compass heading."""
     outline = [
         (0.00, 1.00), (0.12, 0.58), (0.14, 0.16),
@@ -57,17 +57,6 @@ def _aircraft_polygon(latitude: float, longitude: float, heading: float, scale_k
             _offset_geo_point(latitude, longitude, rotated_east, rotated_north)
         )
     return points
-
-
-def _heading_endpoint(latitude: float, longitude: float, heading: float, distance_km: float):
-    """Project a straight directional guide from a current heading."""
-    angle = radians(float(heading))
-    return _offset_geo_point(
-        latitude,
-        longitude,
-        distance_km * sin(angle),
-        distance_km * cos(angle),
-    )
 
 def _base(title: str = "", margin_t: int = 50) -> dict:
     return dict(
@@ -421,32 +410,44 @@ class ChartFactory:
             )
             altitude_scale = [[0, GREEN], [0.45, CYAN], [1, PURPLE]]
 
-            observed_latitudes = []
-            observed_longitudes = []
-            guide_latitudes = []
-            guide_longitudes = []
+            route_latitudes = []
+            route_longitudes = []
+            endpoint_latitudes = []
+            endpoint_longitudes = []
+            endpoint_labels = []
             aircraft_bands = {}
             for _, aircraft in frame.iterrows():
                 latitude = float(aircraft["latitude"])
                 longitude = float(aircraft["longitude"])
-                trail = aircraft.get("trail")
-                if isinstance(trail, list) and len(trail) > 1:
-                    observed_latitudes.extend(
-                        [point["latitude"] for point in trail] + [None]
-                    )
-                    observed_longitudes.extend(
-                        [point["longitude"] for point in trail] + [None]
-                    )
-
                 heading = aircraft["heading"]
-                if pd.notna(heading):
-                    speed = aircraft["speed_kmh"]
-                    guide_distance = 70 if pd.isna(speed) else max(25, min(float(speed) / 6, 140))
-                    guide_end = _heading_endpoint(
-                        latitude, longitude, float(heading), guide_distance
-                    )
-                    guide_latitudes.extend([latitude, guide_end[0], None])
-                    guide_longitudes.extend([longitude, guide_end[1], None])
+
+                origin_latitude = aircraft.get("origin_latitude")
+                origin_longitude = aircraft.get("origin_longitude")
+                destination_latitude = aircraft.get("destination_latitude")
+                destination_longitude = aircraft.get("destination_longitude")
+                has_route_coordinates = all(pd.notna(value) for value in [
+                    origin_latitude,
+                    origin_longitude,
+                    destination_latitude,
+                    destination_longitude,
+                ])
+                if has_route_coordinates:
+                    route_latitudes.extend([
+                        float(origin_latitude), float(destination_latitude), None,
+                    ])
+                    route_longitudes.extend([
+                        float(origin_longitude), float(destination_longitude), None,
+                    ])
+                    endpoint_latitudes.extend([
+                        float(origin_latitude), float(destination_latitude),
+                    ])
+                    endpoint_longitudes.extend([
+                        float(origin_longitude), float(destination_longitude),
+                    ])
+                    endpoint_labels.extend([
+                        f"Origin · {aircraft.get('origin', 'Unknown')}",
+                        f"Destination · {aircraft.get('destination', 'Unknown')}",
+                    ])
 
                 altitude = aircraft["altitude_ft"]
                 altitude_fraction = 0 if pd.isna(altitude) else min(max(float(altitude), 0), 45000) / 45000
@@ -460,22 +461,27 @@ class ChartFactory:
                 aircraft_bands[band]["lat"].extend([point[0] for point in polygon] + [None])
                 aircraft_bands[band]["lon"].extend([point[1] for point in polygon] + [None])
 
-            fig.add_trace(go.Scattergeo(
-                lat=observed_latitudes or [None],
-                lon=observed_longitudes or [None],
-                mode="lines",
-                line=dict(color="rgba(0,212,255,0.48)", width=1.8, dash="dot"),
-                name="Observed trail",
-                hoverinfo="skip",
-            ))
-            fig.add_trace(go.Scattergeo(
-                lat=guide_latitudes or [None],
-                lon=guide_longitudes or [None],
-                mode="lines",
-                line=dict(color="rgba(241,245,249,0.42)", width=1.4, dash="dot"),
-                name="10-min heading guide",
-                hoverinfo="skip",
-            ))
+            if route_latitudes:
+                fig.add_trace(go.Scattergeo(
+                    lat=route_latitudes,
+                    lon=route_longitudes,
+                    mode="lines",
+                    line=dict(color="rgba(0,212,255,0.52)", width=1.6, dash="dot"),
+                    name="Matched origin–destination route",
+                    hoverinfo="skip",
+                ))
+                fig.add_trace(go.Scattergeo(
+                    lat=endpoint_latitudes,
+                    lon=endpoint_longitudes,
+                    mode="markers",
+                    marker=dict(
+                        size=6, symbol="circle-open", color=CYAN,
+                        line=dict(color=CYAN, width=1.2),
+                    ),
+                    customdata=endpoint_labels,
+                    hovertemplate="%{customdata}<extra></extra>",
+                    showlegend=False,
+                ))
 
             for band, coordinates in sorted(aircraft_bands.items()):
                 color = MUTED if band < 0 else sample_colorscale(
@@ -500,7 +506,7 @@ class ChartFactory:
                     "colorscale": altitude_scale,
                     "cmin": 0,
                     "cmax": 45000,
-                    "size": 22,
+                    "size": 38,
                     "symbol": "circle",
                     "showscale": True,
                     "opacity": 0.01,
