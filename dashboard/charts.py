@@ -93,6 +93,8 @@ class ChartFactory:
     def monthly_trend(self, df: pd.DataFrame) -> go.Figure:
         MN = ["Jan","Feb","Mar","Apr","May","Jun",
               "Jul","Aug","Sep","Oct","Nov","Dec"]
+        years = sorted(df["Year"].dropna().astype(int).unique()) if "Year" in df.columns else []
+        year_scope = str(years[0]) if len(years) == 1 else "Selected period"
         monthly = (df.groupby("Month")
                      .agg(avg_delay=("DepDelay","mean"), delayed_count=("Delayed","sum"))
                      .reset_index())
@@ -113,7 +115,7 @@ class ChartFactory:
             fill="tozeroy", fillcolor="rgba(0,212,255,0.06)",
             hovertemplate="<b>%{x}</b><br>Avg delay: <b>%{y} min</b><extra></extra>",
         ))
-        layout = _base("Monthly Delay Trend")
+        layout = _base(f"Monthly Delay Performance · {year_scope} simulated history")
         layout["yaxis2"] = dict(overlaying="y", side="right", gridcolor=GRID,
                                 tickfont=dict(color=MUTED, size=11),
                                 showgrid=False, linecolor=BORDER)

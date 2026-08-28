@@ -12,6 +12,7 @@ from data import (
     API_BASE_URL,
     AIRPORTS,
     GULF_AIRLINES,
+    GULF_ANALYTICS_YEARS,
     GULF_COUNTRIES,
     get_gulf_flights_df,
     get_live_flights,
@@ -61,7 +62,7 @@ class LB:
 
     @staticmethod
     def sidebar():
-        nav=[("◉","Live Airspace","live"),("▣","Market Overview","overview"),
+        nav=[("◉","Live Airspace","live"),("▣","Historical Overview","overview"),
              ("✈","Airlines","airlines"),("🗺","Airports","map"),
              ("⬡","Routes","routes"),("▲","Trends","trends"),
              ("◈","Risk Analyzer","risk"),("⌁","Prediction Lab","predict")]
@@ -95,6 +96,14 @@ class LB:
             html.Div([
                 html.Div(style={"height":"1px","backgroundColor":BORDER,"margin":"14px"}),
                 html.Div("ANALYTICS WINDOW",style={"fontSize":"9px","fontWeight":"700","color":MUTED,"letterSpacing":"2px","padding":"0 14px 10px"}),
+                html.Div([html.Div("Historical Year",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                          dcc.Dropdown(
+                              id="filter-year",
+                              options=[{"label":str(year),"value":year} for year in GULF_ANALYTICS_YEARS],
+                              value=GULF_ANALYTICS_YEARS[-1],clearable=False,
+                              style=DD_STYLE,className="dst-dropdown",
+                          )],
+                         style={"padding":"0 10px","marginBottom":"14px"}),
                 html.Div([html.Div("Month Range",style={"color":MUTED,"fontSize":"11px","marginBottom":"8px"}),
                           dcc.RangeSlider(id="filter-month",min=1,max=12,step=1,value=[1,12],
                                           marks={1:"Jan",3:"Mar",6:"Jun",9:"Sep",12:"Dec"})],
@@ -144,10 +153,10 @@ class LB:
     def page_overview(self):
         g={"displayModeBar":False}
         return html.Div([
-            self.intro("MARKET OVERVIEW","Saudi & UAE operating picture",
-                       "Summarizes simulated flight volume, delay exposure, seasonality and route concentration for the selected market.",
-                       "Compare countries or gateways, then narrow by airline, month range or delayed status.",
-                       "Data: clearly labeled portfolio simulation; not official airline performance."),
+            self.intro("HISTORICAL OVERVIEW","Saudi & UAE portfolio performance",
+                       "Summarizes historical-simulation flight volume, delay exposure, seasonality and route concentration for the selected market and year.",
+                       "Choose a historical year, then compare countries, gateways or airlines and narrow the month range.",
+                       "Data: 2023–2025 portfolio simulation; this page contains no forecast or future-flight prediction."),
             html.Div(id="kpi-row",style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"16px"}),
             html.Div([
                 html.Div([dcc.Graph(id="chart-monthly",config=g,style={"height":"300px"})],style={**CARD_STYLE,"flex":"3"}),
@@ -391,7 +400,7 @@ class App:
             visible={} if page in analytics_pages else {"display":"none"}
             return visible, visible
 
-        def _f(country,airport,airline,months,delayed):
+        def _f(country,airport,airline,year,months,delayed):
             market = GULF_COUNTRIES.get(country, {})
             if airport not in market.get("airports", {}):
                 airport = "ALL"
@@ -399,17 +408,18 @@ class App:
                 airline = "ALL"
             df=get_gulf_flights_df(country,airport)
             if airline and airline!="ALL" and "Operating_Airline" in df.columns: df=df[df["Operating_Airline"]==airline]
+            if year and "Year" in df.columns: df=df[df["Year"]==int(year)]
             if "Month" in df.columns: df=df[df["Month"].between(months[0],months[1])]
             if delayed=="delayed" and "Delayed" in df.columns: df=df[df["Delayed"]==1]
             return df
 
-        ins=[Input("filter-gulf-country","value"),Input("filter-gulf-airport","value"),Input("filter-airline","value"),Input("filter-month","value"),Input("filter-delayed","value")]
+        ins=[Input("filter-gulf-country","value"),Input("filter-gulf-airport","value"),Input("filter-airline","value"),Input("filter-year","value"),Input("filter-month","value"),Input("filter-delayed","value")]
 
         @app.callback(Output("page-content","children"),Output("page-header","children"),
                       Input("page","data"),*ins)
-        def render(page,country,airport,a,m,d):
-            df=_f(country,airport,a,m,d)
-            titles={"overview":"Market Overview","airlines":"Airline Performance","routes":"Routes & Connectivity",
+        def render(page,country,airport,a,year,m,d):
+            df=_f(country,airport,a,year,m,d)
+            titles={"overview":"Historical Operations · Portfolio Simulation","airlines":"Airline Performance","routes":"Routes & Connectivity",
                     "trends":"Monthly Trends","risk":"◈ Gulf Flight Risk Analyzer","map":"🗺 Saudi & UAE Airport Map",
                     "live":"◉ Live Gulf Airspace","predict":"⌁ Prediction Lab"}
             pages={"live":lb.page_live,"overview":lb.page_overview,"airlines":lb.page_airlines,
@@ -466,8 +476,8 @@ class App:
             ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {GREEN}"})
 
         @app.callback(Output("kpi-row","children"),*ins)
-        def kpis(country,airport,a,m,d):
-            df=_f(country,airport,a,m,d); t=len(df)
+        def kpis(country,airport,a,year,m,d):
+            df=_f(country,airport,a,year,m,d); t=len(df)
             delayed=int(df["Delayed"].sum()) if "Delayed" in df.columns else 0
             rate=round(df["Delayed"].mean()*100,1) if t and "Delayed" in df.columns else 0
             avg=round(df[df["DepDelay"]>0]["DepDelay"].mean(),1) if t else 0

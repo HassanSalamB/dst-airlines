@@ -66,6 +66,8 @@ GULF_AIRLINES = sorted({
     for airline in market["airlines"]
 })
 
+GULF_ANALYTICS_YEARS = [2023, 2024, 2025]
+
 GULF_AIRPORTS = {
     code: name
     for market in GULF_COUNTRIES.values()
@@ -167,7 +169,14 @@ def _gulf_mock(n=6000):
         for origin in origins
     ]
 
-    dates = rng.choice(pd.date_range("2025-01-01", "2025-12-31", freq="D"), size=n)
+    dates = rng.choice(
+        pd.date_range(
+            f"{GULF_ANALYTICS_YEARS[0]}-01-01",
+            f"{GULF_ANALYTICS_YEARS[-1]}-12-31",
+            freq="D",
+        ),
+        size=n,
+    )
     airport_delay = {"RUH": 6, "JED": 9, "DMM": 5, "MED": 4, "DXB": 11, "AUH": 7, "SHJ": 8}
     airline_delay = {
         "Riyadh Air": -1.5, "Saudia": 1.0, "flynas": 2.5,
@@ -200,6 +209,7 @@ def _gulf_mock(n=6000):
         "LateAircraftDelay": np.round(np.where(delayed, positive_delay * rng.uniform(0.18, 0.38, n), 0), 1),
     })
     frame["Month"] = frame["FlightDate"].dt.month
+    frame["Year"] = frame["FlightDate"].dt.year
     frame["DayOfWeek"] = frame["FlightDate"].dt.day_name()
     return frame.sort_values("FlightDate").reset_index(drop=True)
 

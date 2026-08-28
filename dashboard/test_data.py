@@ -25,6 +25,7 @@ from data import (
     AIRLINES,
     AIRPORTS,
     GULF_AIRLINES,
+    GULF_ANALYTICS_YEARS,
     GULF_COUNTRIES,
     _enrich_live_routes,
     _mock,
@@ -104,6 +105,11 @@ class TestGulfPortfolioData:
         assert len(frame) == 6000
         assert set(frame["OriginCountry"]) == set(GULF_COUNTRIES)
         assert set(frame["Operating_Airline"]).issubset(set(GULF_AIRLINES))
+
+    def test_gulf_dataset_exposes_historical_years_only(self):
+        frame = get_gulf_flights_df()
+        assert sorted(frame["Year"].unique()) == GULF_ANALYTICS_YEARS
+        assert frame["FlightDate"].max().year == GULF_ANALYTICS_YEARS[-1]
 
     def test_country_and_gateway_filters_drive_the_data(self):
         frame = get_gulf_flights_df("Saudi Arabia", "RUH")
