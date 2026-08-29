@@ -2,6 +2,8 @@
 
 An end-to-end aviation data product for exploring Saudi Arabian and UAE airspace, operational patterns, airport and airline performance, route networks, and transparent delay-risk scenarios.
 
+**[Open the live application](https://airlines.hassansalamb.dev/)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Operations](docs/operations/DEPLOYMENT.md)**
+
 The project demonstrates how to turn imperfect external aviation data into a useful and honest decision-support experience: current aircraft observations are kept separate from simulated historical operations, and model output is presented as a portfolio scenario rather than an official flight forecast.
 
 ![End-to-end Gulf aviation data flow](docs/architecture/02-end-to-end-data-flow.png)
@@ -81,8 +83,7 @@ The durable trade-offs are recorded in [`docs/adr`](docs/adr).
 │   ├── operations/              Deployment, security, and recovery runbooks
 │   ├── ARCHITECTURE.md           Multi-level architecture walkthrough
 │   ├── CI_CD.md                  Pipeline details
-│   ├── INTERVIEW_GUIDE.md        Interview narrative and technical Q&A
-│   └── PORTFOLIO_STRATEGY.md     Improvement plan for both portfolio projects
+│   └── CI_CD.md                  Pipeline details
 ├── k8s/                         Kubernetes resources
 ├── monitoring/                  Prometheus and Grafana configuration
 ├── scripts/                     Deployment and backup automation
@@ -233,24 +234,29 @@ GitHub Actions also validates Terraform formatting, builds both images, scans th
 - Docker Compose: implemented for development, full-stack, and production-oriented runs.
 - Kubernetes: manifests and repeatable Kind/Minikube deployment implemented.
 - Terraform: Docker infrastructure implemented for local or SSH-connected Docker hosts.
-- Render public edge: target architecture; configure only when a public deployment is authorized.
+- Render public edge: live dashboard deployment from the `main` branch.
 - Proxmox data platform: documented target; do not describe it as live until deployment and restore checks pass.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Portfolio strategy for both projects](docs/PORTFOLIO_STRATEGY.md)
-- [Interview preparation](docs/INTERVIEW_GUIDE.md)
 - [Deployment](docs/operations/DEPLOYMENT.md)
 - [Security](docs/operations/SECURITY.md)
 - [Disaster recovery](docs/operations/DISASTER_RECOVERY.md)
 - [CI/CD](docs/CI_CD.md)
 
+## Branch workflow
+
+- `dev` is the integration branch for active development.
+- Changes are tested on `dev` before being merged into `main`.
+- `main` is the release branch and must remain deployable.
+- Only `main` and `dev` are maintained as long-lived branches.
+
 ## Collaboration and ownership
 
 This began as a collaborative DataOps project by Hassan Salam Banayeem, Ali Doghan, and Kristian Boroz. The Gulf-focused product redesign, live Saudi/UAE experience, model-intelligence view, and subsequent portfolio refinements were developed by Hassan Salam Banayeem. Git history remains the source of truth for individual changes.
 
-When presenting the project, distinguish personal contributions from the original team implementation and never claim simulated or community data as proprietary airline data.
+Git history records individual contributions. Simulated and community-sourced data remain explicitly labelled throughout the product and documentation.
 
 ## License and data use
 
