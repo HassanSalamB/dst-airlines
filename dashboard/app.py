@@ -50,7 +50,9 @@ class LB:
     @staticmethod
     def navbar():
         return html.Div([html.Div([
-            html.Div([html.Span("✈",style={"fontSize":"20px","color":CYAN,"marginRight":"12px"}),
+            html.Div([html.A("⌂",href="https://hassansalamb.dev",title="Back to hassansalamb.dev",
+                                **{"aria-label":"Back to hassansalamb.dev"},style={"display":"grid","placeItems":"center","width":"36px","height":"36px","marginRight":"12px","border":f"1px solid {BORDER}","borderRadius":"7px","color":CYAN,"backgroundColor":BG,"fontSize":"19px","fontWeight":"700","textDecoration":"none"}),
+                      html.Span("✈",style={"fontSize":"20px","color":CYAN,"marginRight":"12px"}),
                       html.Span("DST Airlines",style={"fontSize":"17px","fontWeight":"700","color":TEXT}),
                       html.Span(" · Gulf Flight Operations",style={"fontSize":"12px","color":MUTED,"marginLeft":"8px"})],
                      style={"display":"flex","alignItems":"center"}),
