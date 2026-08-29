@@ -1,6 +1,6 @@
 """
 test_api.py — Unit Tests for DST Airlines FastAPI Endpoints
-Tests all 16 endpoints including the 5 new dashboard endpoints.
+Tests the Gulf portfolio API endpoints.
 
 Run with:
     pytest test_api.py -v
@@ -299,14 +299,6 @@ class TestRoutes:
         response = client.get("/routes")
         data = response.json()
         assert "data" in data
-
-
-class TestPredict:
-    """Test POST /predict endpoint."""
-
-    def test_predict_without_data_returns_422(self):
-        response = client.post("/predict", json={})
-        assert response.status_code == 422  # Validation error
 
 
 class TestGulfPredictionModel:

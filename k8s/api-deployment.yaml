@@ -57,11 +57,6 @@ spec:
                 secretKeyRef:
                   name: dst-airlines-secret
                   key: NEO4J_PASSWORD
-            - name: MODEL_PATH
-              valueFrom:
-                configMapKeyRef:
-                  name: dst-airlines-config
-                  key: MODEL_PATH
             - name: GULF_MODEL_PATH
               valueFrom:
                 configMapKeyRef:

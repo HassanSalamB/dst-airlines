@@ -117,7 +117,7 @@ resource "docker_container" "api" {
     "NEO4J_URL=bolt://neo4j_airlines:7687",
     "NEO4J_USER=neo4j",
     "NEO4J_PASS=${var.neo4j_password}",
-    "MODEL_PATH=/app/logistic_regression.pkl"
+    "GULF_MODEL_PATH=/app/gulf_delay_model.joblib"
   ]
 
   ports {

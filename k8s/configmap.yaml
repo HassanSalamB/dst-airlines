@@ -7,6 +7,5 @@ data:
   MONGO_URL: "mongodb://mongo:27017/"
   NEO4J_URL: "bolt://neo4j:7687"
   NEO4J_USER: "neo4j"
-  MODEL_PATH: "/app/logistic_regression.pkl"
   GULF_MODEL_PATH: "/app/gulf_delay_model.joblib"
   API_URL: "http://api:8000"

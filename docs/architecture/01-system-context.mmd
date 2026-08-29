@@ -1,0 +1,33 @@
+%%{init: {"theme":"base", "themeVariables":{"background":"#f8fafc","primaryColor":"#dbeafe","primaryTextColor":"#0f172a","primaryBorderColor":"#2563eb","lineColor":"#475569","secondaryColor":"#dcfce7","tertiaryColor":"#fef3c7","fontFamily":"Inter, Arial, sans-serif"}}}%%
+flowchart TB
+    subgraph audience[" "]
+        direction LR
+        candidate["Hassan<br/>data-product engineer"]
+        recruiter["Recruiter / interviewer"]
+        operator["Airline or airport<br/>operations user"]
+    end
+
+    platform["DST Airlines<br/>Gulf Aviation Intelligence"]
+
+    subgraph evidence[" "]
+        direction LR
+        live["OpenSky Network<br/>aircraft observations"]
+        weather["Open-Meteo<br/>gateway weather"]
+        route["ADSBDB<br/>best-effort route matches"]
+        official["Future official provider<br/>schedule and status data"]
+    end
+
+    candidate -->|"builds and explains"| platform
+    recruiter -->|"evaluates engineering evidence"| platform
+    operator -->|"explores operational views<br/>and delay-risk scenarios"| platform
+    live -->|"current positions and motion"| platform
+    weather -->|"current weather"| platform
+    route -->|"community route enrichment"| platform
+    official -.->|"future adapter"| platform
+
+    classDef person fill:#ecfeff,stroke:#0891b2,color:#164e63,stroke-width:2px;
+    classDef product fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff,stroke-width:3px;
+    classDef external fill:#f8fafc,stroke:#64748b,color:#0f172a,stroke-width:1.5px;
+    class candidate,recruiter,operator person;
+    class platform product;
+    class live,weather,route,official external;

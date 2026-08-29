@@ -1,33 +1,11 @@
-"""
-api/main.py — DST Airlines FastAPI
-Step 3: REST API connecting PostgreSQL + MongoDB + Neo4j + ML model
-
-NEW ENDPOINTS FOR DASHBOARD:
-    GET  /api/flights              query flights for dashboard (random sampling)
-    GET  /api/airlines             list all airlines
-    GET  /api/origins              list origin airports (optional: filter by airline)
-    GET  /api/destinations         list destination airports (filter by airline/origin)
-    GET  /api/dashboard-stats      aggregated stats for dashboard
-
-EXISTING ENDPOINTS:
-    GET  /                         health check
-    GET  /flights                  query flights (filters: airline, origin, dest, date)
-    GET  /flights/stats            aggregated stats from gold layer
-    GET  /airports                 list all airports (PostgreSQL)
-    GET  /airports/{iata}          single airport info
-    GET  /routes                   all routes with delay stats (PostgreSQL)
-    GET  /routes/graph             route graph data (Neo4j)
-    GET  /routes/path              shortest path between airports (Neo4j)
-    GET  /live                     live flights (MongoDB)
-    POST /predict                  delay prediction (ML model)
-    GET  /docs                     Swagger UI (auto-generated)
+"""FastAPI product interface for Gulf aviation analytics, live observations,
+route traversal, and the versioned Saudi/UAE delay-risk model.
 """
 
 import os
-import pickle
 import logging
 from datetime import date
-from typing import Optional, List
+from typing import Optional
 
 import joblib
 import pandas as pd
@@ -47,7 +25,6 @@ MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017/")
 NEO4J_URL = os.getenv("NEO4J_URL", "bolt://neo4j:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS")
-MODEL_PATH = os.getenv("MODEL_PATH", "logistic_regression.pkl")
 GULF_MODEL_PATH = os.getenv("GULF_MODEL_PATH", "gulf_delay_model.joblib")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -87,22 +64,8 @@ class DBClients:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ML Model loader
+# Gulf model loader
 # ═══════════════════════════════════════════════════════════════════════════
-_model = None
-
-def get_model():
-    global _model
-    if _model is None:
-        try:
-            with open(MODEL_PATH, "rb") as f:
-                _model = pickle.load(f)
-            log.info("✅ ML model loaded")
-        except FileNotFoundError:
-            log.warning("⚠️  Model file not found — prediction endpoint disabled")
-    return _model
-
-
 _gulf_model_bundle = None
 
 
@@ -153,42 +116,8 @@ def gulf_model_reliability(metadata: dict) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Pydantic schemas
+# Pydantic schema
 # ═══════════════════════════════════════════════════════════════════════════
-class FlightInput(BaseModel):
-    flightdate:       str
-    origin:           str
-    origincityname:   str
-    dest:             str
-    destcityname:     str
-    distance:         float
-    distancegroup:    int
-    diverted:         int = 0
-
-class WeatherInput(BaseModel):
-    weather_date:      str
-    location_name:     str
-    temp:              float
-    temp_min_c:        float
-    temp_max_c:        float
-    relative_humidity: float
-    precipitation_mm:  float
-    snow_mm:           Optional[float] = 0.0
-    wind_speed_kmh:    float
-    pressure_hpa:      float
-    cloud_cover:       float
-
-class PredictRequest(BaseModel):
-    flights: List[FlightInput]
-    weather: List[WeatherInput]
-
-class PredictResponse(BaseModel):
-    predictions:        List[bool]
-    delay_probabilities: Optional[List[float]]
-    rows_predicted:     int
-    counts:             dict
-
-
 class GulfPredictionInput(BaseModel):
     origin: str
     destination: str
@@ -216,9 +145,12 @@ class GulfPredictionResponse(BaseModel):
 # App
 # ═══════════════════════════════════════════════════════════════════════════
 app = FastAPI(
-    title="DST Airlines API",
-    description="Flight delay analytics — PostgreSQL · MongoDB · Neo4j · ML",
-    version="2.0.0",
+    title="DST Airlines Gulf Aviation API",
+    description=(
+        "Saudi/UAE portfolio analytics, live aircraft observations, route "
+        "traversal, and transparent delay-risk scenarios."
+    ),
+    version="3.0.0",
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
@@ -230,24 +162,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL_FEATURES = [
-    "distance", "distancegroup",
-    "temp_o", "temp_min_c_o", "temp_max_c_o", "relative_humidity_o",
-    "precipitation_mm_o", "snow_mm_o", "wind_speed_kmh_o",
-    "pressure_hpa_o", "cloud_cover_o",
-    "temp_d", "temp_min_c_d", "temp_max_c_d", "relative_humidity_d",
-    "precipitation_mm_d", "snow_mm_d", "wind_speed_kmh_d",
-    "pressure_hpa_d", "cloud_cover_d",
-    "diverted", "origin", "dest",
-]
-
-
 # ── Health ────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
 def health():
     return {
         "status": "ok",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "databases": ["postgresql", "mongodb", "neo4j"],
     }
 
@@ -790,74 +710,3 @@ def predict_gulf_delay(payload: GulfPredictionInput):
         data_scope=metadata["data_scope"],
         limitations=metadata["limitations"],
     )
-
-
-@app.post("/predict", response_model=PredictResponse, tags=["ML"])
-def predict(payload: PredictRequest):
-    """Predict flight delays using the trained ML model."""
-    model = get_model()
-    if model is None:
-        raise HTTPException(503, "ML model not loaded")
-
-    df_flight  = pd.DataFrame([f.model_dump() for f in payload.flights])
-    df_weather = pd.DataFrame([w.model_dump() for w in payload.weather])
-    df_weather["snow_mm"] = df_weather["snow_mm"].fillna(0)
-
-    # Merge origin weather
-    df = pd.merge(df_flight, df_weather,
-                  left_on=["flightdate", "origincityname"],
-                  right_on=["weather_date", "location_name"], how="inner")
-    df = df.rename(columns={
-        "temp": "temp_o", "temp_min_c": "temp_min_c_o",
-        "temp_max_c": "temp_max_c_o", "relative_humidity": "relative_humidity_o",
-        "precipitation_mm": "precipitation_mm_o", "snow_mm": "snow_mm_o",
-        "wind_speed_kmh": "wind_speed_kmh_o", "pressure_hpa": "pressure_hpa_o",
-        "cloud_cover": "cloud_cover_o",
-    })
-
-    # Merge dest weather
-    df = pd.merge(df, df_weather,
-                  left_on=["flightdate", "destcityname"],
-                  right_on=["weather_date", "location_name"], how="inner")
-    df = df.rename(columns={
-        "temp": "temp_d", "temp_min_c": "temp_min_c_d",
-        "temp_max_c": "temp_max_c_d", "relative_humidity": "relative_humidity_d",
-        "precipitation_mm": "precipitation_mm_d", "snow_mm": "snow_mm_d",
-        "wind_speed_kmh": "wind_speed_kmh_d", "pressure_hpa": "pressure_hpa_d",
-        "cloud_cover": "cloud_cover_d",
-    })
-
-    if df.empty:
-        raise HTTPException(422, "No matching flight+weather data after merge")
-
-    missing = [c for c in MODEL_FEATURES if c not in df.columns]
-    if missing:
-        raise HTTPException(422, f"Missing features: {missing}")
-
-    feats = df[MODEL_FEATURES]
-    preds = model.predict(feats)
-    unique, counts = np.unique(preds, return_counts=True)
-
-    response = PredictResponse(
-        predictions=[bool(p) for p in preds],
-        delay_probabilities=(
-            [float(p) for p in model.predict_proba(feats)[:, 1]]
-            if hasattr(model, "predict_proba") else None
-        ),
-        rows_predicted=int(len(preds)),
-        counts={str(k): int(v) for k, v in zip(unique, counts)},
-    )
-
-    # Log to MongoDB
-    try:
-        from datetime import datetime
-        DBClients.mongo()["delay_predictions"].insert_one({
-            "predicted_at":  datetime.utcnow().isoformat(),
-            "rows":          int(len(preds)),
-            "delayed_count": int(counts[list(unique).index(True)])
-                             if True in unique else 0,
-        })
-    except Exception:
-        pass  # Don't fail the prediction if logging fails
-
-    return response

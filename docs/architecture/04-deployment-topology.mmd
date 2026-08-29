@@ -1,0 +1,43 @@
+%%{init: {"theme":"base", "themeVariables":{"background":"#f8fafc","primaryColor":"#dbeafe","primaryTextColor":"#0f172a","primaryBorderColor":"#2563eb","lineColor":"#475569","secondaryColor":"#dcfce7","tertiaryColor":"#fef3c7","fontFamily":"Inter, Arial, sans-serif"}}}%%
+flowchart TB
+    visitor["Public portfolio visitor"]
+    maintainer["Maintainer / interviewer"]
+    internet["External data sources<br/>OpenSky · Open-Meteo · ADSBDB"]
+
+    subgraph render[" "]
+        proxy["TLS + public URL"]
+        dash["Dash web service"]
+        api["FastAPI web service"]
+        snapshot[("Curated fallback<br/>and model artifact")]
+        proxy --> dash --> api
+        snapshot --> dash
+        snapshot --> api
+    end
+
+    subgraph proxmox[" "]
+        gateway["Authenticated reverse proxy"]
+        collector["Collector + Kafka"]
+        stores[("PostgreSQL · MongoDB · Neo4j")]
+        observe["Prometheus + Grafana"]
+        backups[("Encrypted backups")]
+        collector --> stores
+        stores --> backups
+        observe --> collector
+        observe --> stores
+        gateway --> observe
+    end
+
+    visitor --> proxy
+    maintainer --> gateway
+    internet --> collector
+    internet --> dash
+    api -.->|"authenticated data interface"| gateway
+
+    classDef person fill:#ecfeff,stroke:#0891b2,color:#164e63;
+    classDef public fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef private fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef store fill:#fef3c7,stroke:#d97706,color:#78350f;
+    class visitor,maintainer,internet person;
+    class proxy,dash,api public;
+    class gateway,collector,observe private;
+    class snapshot,stores,backups store;

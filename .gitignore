@@ -45,6 +45,7 @@ secrets.json
 .pytest_cache/
 .coverage
 htmlcov/
+trivy-report-*.json
 
 # Jupyter
 .ipynb_checkpoints/
@@ -64,3 +65,5 @@ terraform/terraform.rc
 backups/
 *.backup
 *.dump
+collected_data/
+flight_data.parquet

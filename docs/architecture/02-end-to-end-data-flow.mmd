@@ -1,0 +1,39 @@
+%%{init: {"theme":"base", "themeVariables":{"background":"#f8fafc","primaryColor":"#dbeafe","primaryTextColor":"#0f172a","primaryBorderColor":"#2563eb","lineColor":"#475569","secondaryColor":"#dcfce7","tertiaryColor":"#fef3c7","fontFamily":"Inter, Arial, sans-serif"}}}%%
+flowchart TB
+    subgraph live_lane[" "]
+        direction LR
+        opensky["OpenSky<br/>state vectors"] --> collector["Python collector<br/>normalize + classify"]
+        collector --> kafka["Kafka<br/>gulf.live_flights"]
+        kafka --> consumer["Consumer<br/>validate + persist"]
+        consumer --> mongo[("MongoDB<br/>recent observations")]
+    end
+
+    subgraph analytics_lane[" "]
+        direction LR
+        generator["Versioned Saudi/UAE<br/>simulation"] --> postgres[("PostgreSQL<br/>operational history")]
+        generator --> training["Chronological ML training<br/>fit → calibrate → evaluate"]
+        training --> artifact[("Calibrated CatBoost<br/>artifact + model card")]
+        postgres --> graphload["Route graph loader"]
+        graphload --> neo4j[("Neo4j<br/>airport-route graph")]
+    end
+
+    mongo --> api["FastAPI<br/>shared product interface"]
+    postgres --> api
+    neo4j --> api
+    artifact --> api
+
+    api --> dashboard["Dash / Plotly<br/>operational views"]
+    weather["Open-Meteo"] --> dashboard
+    routes["ADSBDB"] --> dashboard
+    dashboard --> user["Portfolio visitor<br/>or operations user"]
+
+    api --> metrics["/metrics"] --> prometheus["Prometheus"] --> grafana["Grafana"]
+
+    classDef source fill:#ecfeff,stroke:#0891b2,color:#164e63;
+    classDef process fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef store fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef product fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff,stroke-width:2px;
+    class opensky,generator,weather,routes source;
+    class collector,consumer,training,graphload,metrics,prometheus,grafana process;
+    class kafka,mongo,postgres,artifact,neo4j store;
+    class api,dashboard,user product;

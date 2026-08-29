@@ -1,0 +1,48 @@
+%%{init: {"theme":"base", "themeVariables":{"background":"#f8fafc","primaryColor":"#dbeafe","primaryTextColor":"#0f172a","primaryBorderColor":"#2563eb","lineColor":"#475569","secondaryColor":"#dcfce7","tertiaryColor":"#fef3c7","fontFamily":"Inter, Arial, sans-serif"}}}%%
+flowchart TB
+    dash["Dash client"]
+
+    subgraph backend[" "]
+        health["Health + readiness"]
+        analytics["Historical analytics<br/>filters and summaries"]
+        live["Live-airspace query<br/>country / gateway / freshness"]
+        route_module["Route traversal<br/>path and network"]
+        prediction["Delay-risk scoring<br/>validation + provenance"]
+        telemetry["Prometheus telemetry"]
+    end
+
+    subgraph adapters[" "]
+        pgadapter["PostgreSQL adapter"]
+        mongoadapter["MongoDB adapter"]
+        neoadapter["Neo4j adapter"]
+        modeladapter["Versioned model loader"]
+    end
+
+    pg[("PostgreSQL<br/>historical analytics")]
+    mongo[("MongoDB<br/>live observations")]
+    neo[("Neo4j<br/>route graph")]
+    model[("joblib artifact<br/>metadata JSON")]
+
+    dash --> health
+    dash --> analytics
+    dash --> live
+    dash --> route_module
+    dash --> prediction
+
+    analytics --> pgadapter --> pg
+    live --> mongoadapter --> mongo
+    route_module --> neoadapter --> neo
+    prediction --> modeladapter --> model
+    health --> pgadapter
+    health --> mongoadapter
+    health --> neoadapter
+    telemetry --> metrics["Prometheus scrape"]
+
+    classDef client fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff,stroke-width:2px;
+    classDef module fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef adapter fill:#fef3c7,stroke:#d97706,color:#78350f;
+    classDef store fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    class dash client;
+    class health,analytics,live,route_module,prediction,telemetry module;
+    class pgadapter,mongoadapter,neoadapter,modeladapter adapter;
+    class pg,mongo,neo,model,metrics store;
