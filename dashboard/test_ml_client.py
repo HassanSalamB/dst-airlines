@@ -68,3 +68,4 @@ def test_predict_gulf_delay_falls_back_to_historical_baseline_when_api_is_offlin
     assert prediction["risk_band"] in {"LOW", "MEDIUM", "HIGH"}
     assert prediction["model_version"] == "portfolio-baseline"
     assert "not the trained CatBoost model" in prediction["limitations"]
+    assert "Connection" not in prediction["fallback_reason"]

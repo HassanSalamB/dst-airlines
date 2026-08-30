@@ -161,7 +161,8 @@ def _historical_baseline_prediction(payload: dict[str, Any], frame: pd.DataFrame
             "FastAPI model inference is offline, so this is a transparent "
             "historical baseline, not the trained CatBoost model output."
         ),
-        "fallback_reason": reason,
+        "fallback_reason": "FastAPI inference service is offline; using dashboard baseline fallback.",
+        "debug_reason": reason,
     }
 
 
