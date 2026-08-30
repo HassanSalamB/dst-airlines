@@ -149,7 +149,7 @@ class TestDashboardOrigins:
         assert len(data) > 0
 
     def test_origins_filter_by_airline(self):
-        response = client.get("/api/origins?airline=AA")
+        response = client.get("/api/origins?airline=SV")
         data = response.json()
         assert isinstance(data, list)
         assert len(data) > 0

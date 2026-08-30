@@ -39,6 +39,7 @@ The target topology separates a lightweight public portfolio edge from continuou
 | Flow | Provenance | What it supports | What it does not prove |
 |---|---|---|---|
 | OpenSky → collector → Kafka → MongoDB | Live community aircraft observations | Current detected position, altitude, speed, heading and freshness | Official schedule, gate, delay or confirmed origin/destination |
+| ADSB.lol → public dashboard | Live community aircraft observations when OpenSky is unreachable from the public host | Current detected position, altitude, speed, heading and freshness | Complete airspace coverage, official schedule, gate, delay or confirmed route |
 | Saudi/UAE generator → PostgreSQL | Portfolio simulation | Historical filters, operational charts and repeatable testing | Actual airline performance |
 | Simulation → calibrated model artifact | Chronological portfolio evaluation | What-if delay-risk scenarios and ML deployment mechanics | A forecast for a real scheduled flight |
 | ADSBDB → dashboard | Best-effort community route match | Optional route context for a callsign | Authoritative commercial routing |

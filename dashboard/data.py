@@ -13,6 +13,7 @@ import requests
 
 API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
+ADSBLOL_POINT_URL = "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
 ADSBDB_CALLSIGN_URL = "https://api.adsbdb.com/v0/callsign/{callsign}"
 GULF_BBOX = {"lamin": 16.0, "lomin": 34.0, "lamax": 33.0, "lomax": 56.5}
 
@@ -69,6 +70,10 @@ GULF_AIRPORT_COORDS = {
     "DXB": (25.2532, 55.3657), "AUH": (24.4330, 54.6511),
     "SHJ": (25.3286, 55.5172),
 }
+
+# Four 250 NM circles cover the supported gateway catchments without claiming
+# complete legal-airspace coverage. MED falls within the JED circle.
+ADSBLOL_FEED_CENTERS = ("RUH", "JED", "DMM", "DXB")
 
 GULF_AIRLINES = sorted({
     airline
@@ -505,13 +510,54 @@ def _distance_between_coords(lat1, lon1, lat2, lon2):
     return 6371 * 2 * asin(sqrt(a))
 
 
-def _direct_opensky_payload():
-    """Fetch one cached Gulf snapshot when the FastAPI/Mongo stack is absent."""
-    cache_seconds = max(30, int(os.getenv("OPENSKY_CACHE_SECONDS", "60")))
-    if _LIVE_CACHE["payload"] and time.monotonic() - _LIVE_CACHE["fetched_at"] < cache_seconds:
-        return _LIVE_CACHE["payload"]
+def _optional_float(value):
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
-    response = requests.get(OPENSKY_STATES_URL, params=GULF_BBOX, timeout=20)
+
+def _live_row(
+    *, icao24, callsign, registration_country, longitude, latitude,
+    altitude_ft, speed_kmh, heading, vertical_rate_ms, snapshot_time,
+    last_contact, data_source,
+):
+    if latitude is None or longitude is None:
+        return None
+    latitude = float(latitude)
+    longitude = float(longitude)
+    market_country = _market_for_position(latitude, longitude)
+    if market_country is None:
+        return None
+    nearest, distance = _nearest_gulf_gateway(latitude, longitude, market_country)
+    altitude_ft = _optional_float(altitude_ft)
+    return {
+        "icao24": icao24,
+        "callsign": (callsign or "").strip() or None,
+        "registration_country": registration_country,
+        "longitude": longitude,
+        "latitude": latitude,
+        "altitude_m": round(altitude_ft / 3.28084, 1) if altitude_ft is not None else None,
+        "altitude_ft": round(altitude_ft) if altitude_ft is not None else None,
+        "speed_kmh": round(float(speed_kmh), 1) if _optional_float(speed_kmh) is not None else None,
+        "heading": heading,
+        "vertical_rate_ms": vertical_rate_ms,
+        "on_ground": False,
+        "airborne": True,
+        "nearest_airport": nearest,
+        "distance_to_airport_km": round(distance, 1),
+        "market_country": market_country,
+        "snapshot_time": snapshot_time,
+        "snapshot_at": datetime.fromtimestamp(snapshot_time, tz=timezone.utc).isoformat(),
+        "last_contact": last_contact,
+        "data_source": data_source,
+        "is_live": True,
+    }
+
+
+def _fetch_opensky_payload():
+    timeout = max(3, min(20, int(os.getenv("OPENSKY_TIMEOUT_SECONDS", "5"))))
+    response = requests.get(OPENSKY_STATES_URL, params=GULF_BBOX, timeout=timeout)
     response.raise_for_status()
     raw = response.json()
     snapshot_time = int(raw.get("time") or time.time())
@@ -524,36 +570,26 @@ def _direct_opensky_payload():
             vertical_rate, _sensors, geo_altitude, _squawk, _spi,
             _position_source, _category,
         ) = values[:18]
-        if on_ground is not False or latitude is None or longitude is None:
+        if on_ground is not False:
             continue
-        market_country = _market_for_position(float(latitude), float(longitude))
-        if market_country is None:
-            continue
-        nearest, distance = _nearest_gulf_gateway(float(latitude), float(longitude), market_country)
         altitude_m = geo_altitude if geo_altitude is not None else baro_altitude
-        rows.append({
-            "icao24": icao24,
-            "callsign": (callsign or "").strip() or None,
-            "registration_country": registration_country,
-            "longitude": float(longitude),
-            "latitude": float(latitude),
-            "altitude_m": round(float(altitude_m), 1) if altitude_m is not None else None,
-            "altitude_ft": round(float(altitude_m) * 3.28084) if altitude_m is not None else None,
-            "speed_kmh": round(float(velocity) * 3.6, 1) if velocity is not None else None,
-            "heading": heading,
-            "vertical_rate_ms": vertical_rate,
-            "on_ground": False,
-            "airborne": True,
-            "nearest_airport": nearest,
-            "distance_to_airport_km": round(distance, 1),
-            "market_country": market_country,
-            "snapshot_time": snapshot_time,
-            "snapshot_at": datetime.fromtimestamp(snapshot_time, tz=timezone.utc).isoformat(),
-            "last_contact": last_contact,
-            "data_source": "OpenSky Network",
-            "is_live": True,
-        })
-    payload = {
+        row = _live_row(
+            icao24=icao24,
+            callsign=callsign,
+            registration_country=registration_country,
+            longitude=longitude,
+            latitude=latitude,
+            altitude_ft=float(altitude_m) * 3.28084 if altitude_m is not None else None,
+            speed_kmh=float(velocity) * 3.6 if velocity is not None else None,
+            heading=heading,
+            vertical_rate_ms=vertical_rate,
+            snapshot_time=snapshot_time,
+            last_contact=last_contact,
+            data_source="OpenSky Network",
+        )
+        if row:
+            rows.append(row)
+    return {
         "data": rows,
         "count": len(rows),
         "last_updated": datetime.fromtimestamp(snapshot_time, tz=timezone.utc).isoformat(),
@@ -561,6 +597,103 @@ def _direct_opensky_payload():
         "is_live": True,
         "scope_note": "Country uses a portfolio boundary; airport is the nearest supported gateway.",
     }
+
+
+def _normalize_adsblol_aircraft(aircraft, snapshot_time):
+    altitude = aircraft.get("alt_geom")
+    if altitude is None:
+        altitude = aircraft.get("alt_baro")
+    if altitude == "ground":
+        return None
+    try:
+        seen = float(aircraft.get("seen", 0))
+    except (TypeError, ValueError):
+        seen = 0
+    try:
+        vertical_rate = float(aircraft["baro_rate"]) * 0.00508 if aircraft.get("baro_rate") is not None else None
+    except (TypeError, ValueError):
+        vertical_rate = None
+    try:
+        speed_kmh = float(aircraft["gs"]) * 1.852 if aircraft.get("gs") is not None else None
+    except (TypeError, ValueError):
+        speed_kmh = None
+    return _live_row(
+        icao24=(aircraft.get("hex") or "").lstrip("~") or None,
+        callsign=aircraft.get("flight"),
+        registration_country=None,
+        longitude=aircraft.get("lon"),
+        latitude=aircraft.get("lat"),
+        altitude_ft=altitude,
+        speed_kmh=speed_kmh,
+        heading=aircraft.get("track"),
+        vertical_rate_ms=vertical_rate,
+        snapshot_time=snapshot_time,
+        last_contact=snapshot_time - seen,
+        data_source="ADSB.lol",
+    )
+
+
+def _fetch_adsblol_payload():
+    timeout = max(3, min(15, int(os.getenv("ADSBLOL_TIMEOUT_SECONDS", "5"))))
+
+    def fetch(center):
+        latitude, longitude = GULF_AIRPORT_COORDS[center]
+        url = ADSBLOL_POINT_URL.format(lat=latitude, lon=longitude, radius=250)
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+
+    payloads = []
+    errors = []
+    with ThreadPoolExecutor(max_workers=len(ADSBLOL_FEED_CENTERS)) as executor:
+        futures = {executor.submit(fetch, center): center for center in ADSBLOL_FEED_CENTERS}
+        for future in as_completed(futures):
+            try:
+                payloads.append(future.result())
+            except (requests.RequestException, TypeError, ValueError) as exc:
+                errors.append(exc)
+    if not payloads:
+        raise requests.RequestException("ADSB.lol gateway queries failed") from (errors[0] if errors else None)
+
+    snapshot_time = int(max((payload.get("now") or 0) for payload in payloads) / 1000) or int(time.time())
+    aircraft_by_icao = {}
+    for payload in payloads:
+        for aircraft in payload.get("ac") or []:
+            key = (aircraft.get("hex") or "").lstrip("~")
+            if not key:
+                continue
+            current = aircraft_by_icao.get(key)
+            seen = _optional_float(aircraft.get("seen"))
+            current_seen = _optional_float(current.get("seen")) if current else None
+            if current is None or (seen if seen is not None else 9999) < (current_seen if current_seen is not None else 9999):
+                aircraft_by_icao[key] = aircraft
+    rows = []
+    for aircraft in aircraft_by_icao.values():
+        row = _normalize_adsblol_aircraft(aircraft, snapshot_time)
+        if row:
+            rows.append(row)
+    return {
+        "data": rows,
+        "count": len(rows),
+        "last_updated": datetime.fromtimestamp(snapshot_time, tz=timezone.utc).isoformat(),
+        "source": "ADSB.lol community feed (OpenSky fallback)",
+        "is_live": True,
+        "scope_note": "Community ADS-B observations within supported gateway catchments.",
+    }
+
+
+def _direct_opensky_payload():
+    """Fetch a cached live snapshot, preferring OpenSky over ADSB.lol."""
+    cache_seconds = max(30, int(os.getenv("OPENSKY_CACHE_SECONDS", "60")))
+    if _LIVE_CACHE["payload"] and time.monotonic() - _LIVE_CACHE["fetched_at"] < cache_seconds:
+        return _LIVE_CACHE["payload"]
+
+    try:
+        payload = _fetch_opensky_payload()
+        if not payload["data"]:
+            payload = _fetch_adsblol_payload()
+    except (requests.RequestException, TypeError, ValueError):
+        payload = _fetch_adsblol_payload()
     _LIVE_CACHE.update({"fetched_at": time.monotonic(), "payload": payload})
     return payload
 

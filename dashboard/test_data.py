@@ -28,7 +28,10 @@ from data import (
     GULF_ANALYTICS_END_DATE,
     GULF_ANALYTICS_YEARS,
     GULF_COUNTRIES,
+    _LIVE_CACHE,
+    _direct_opensky_payload,
     _enrich_live_routes,
+    _normalize_adsblol_aircraft,
     _mock,
     _market_for_position,
     get_gulf_flights_df,
@@ -541,3 +544,54 @@ class TestGetLiveFlights:
 
         assert result["count"] == 1
         assert result["data"][0]["nearest_airport"] == "RUH"
+
+    def test_normalizes_adsblol_observation_without_claiming_schedule_data(self):
+        result = _normalize_adsblol_aircraft({
+            "hex": "896123",
+            "flight": "UAE12 ",
+            "lat": 25.2532,
+            "lon": 55.3657,
+            "alt_baro": 12000,
+            "gs": 250,
+            "track": 92.5,
+            "baro_rate": 600,
+            "seen": 2.5,
+        }, 1_788_000_000)
+
+        assert result["callsign"] == "UAE12"
+        assert result["market_country"] == "United Arab Emirates"
+        assert result["nearest_airport"] in {"DXB", "AUH", "SHJ"}
+        assert result["speed_kmh"] == 463.0
+        assert result["data_source"] == "ADSB.lol"
+        assert "origin" not in result
+        assert "destination" not in result
+
+    def test_discards_adsblol_ground_and_out_of_scope_observations(self):
+        ground = _normalize_adsblol_aircraft({
+            "hex": "896123", "lat": 25.25, "lon": 55.36, "alt_baro": "ground",
+        }, 1_788_000_000)
+        outside = _normalize_adsblol_aircraft({
+            "hex": "abc123", "lat": 51.5, "lon": -0.1, "alt_baro": 30000,
+        }, 1_788_000_000)
+
+        assert ground is None
+        assert outside is None
+
+    @patch('data._fetch_adsblol_payload')
+    @patch('data._fetch_opensky_payload')
+    def test_uses_adsblol_when_opensky_is_unreachable(self, opensky, adsblol):
+        import requests
+        opensky.side_effect = requests.exceptions.Timeout()
+        adsblol.return_value = {
+            "data": [{"icao24": "896123", "data_source": "ADSB.lol"}],
+            "count": 1,
+            "last_updated": "2026-08-30T10:00:00Z",
+            "source": "ADSB.lol community feed (OpenSky fallback)",
+            "is_live": True,
+        }
+        with patch.dict(_LIVE_CACHE, {"fetched_at": 0.0, "payload": None}):
+            result = _direct_opensky_payload()
+
+        assert result["count"] == 1
+        assert result["source"].startswith("ADSB.lol")
+        adsblol.assert_called_once_with()

@@ -118,7 +118,7 @@ class LB:
                                          labelStyle={"display":"block","marginBottom":"4px"})],
                          style={"padding":"0 10px"}),
             ],id="analytics-filter-section"),
-            html.Div("Live positions · OpenSky  |  Weather · Open-Meteo  |  Analytics · portfolio simulation",
+            html.Div("Live positions · Community ADS-B  |  Weather · Open-Meteo  |  Analytics · portfolio simulation",
                      style={"fontSize":"9px","color":MUTED,"padding":"16px 10px","lineHeight":"1.5"}),
         ],style={"width":SIDEBAR_W,"minWidth":SIDEBAR_W,"backgroundColor":CARD,"borderRight":f"1px solid {BORDER}",
                  "height":"calc(100vh - 56px)","position":"sticky","top":"56px","overflowY":"auto"})
@@ -185,14 +185,14 @@ class LB:
         ]
         return html.Div([
             self.intro("LIVE AIRSPACE","Aircraft being observed now",
-                       "Shows current OpenSky aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
+                       "Shows current community ADS-B aircraft positions inside the selected Saudi/UAE portfolio boundary. Origin and destination are best-effort callsign route matches.",
                        "Choose all countries, one country, a nearest-gateway catchment or a recognized airline callsign prefix; aircraft color shows altitude and its nose follows the reported heading.",
-                       "Positions: OpenSky · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
+                       "Positions: OpenSky primary / ADSB.lol fallback · Routes: ADSBDB community lookup · Weather: Open-Meteo. Route matches are not official schedules."),
             html.Div([
                 html.Div([
                     html.Div("LIVE AIRSPACE",id="live-status",style={"fontSize":"11px","fontWeight":"700","letterSpacing":"1.5px","color":GREEN}),
                     html.Div("Current aircraft state vectors over the Gulf focus area",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginTop":"5px"}),
-                    html.Div("OpenSky positions are not schedules, gates, airline delays, or proof of destination.",style={"fontSize":"11px","color":MUTED,"marginTop":"4px"}),
+                    html.Div("Community ADS-B positions are not schedules, gates, airline delays, or proof of destination.",style={"fontSize":"11px","color":MUTED,"marginTop":"4px"}),
                 ]),
                 html.Div([
                     html.Div(id="live-count",style={"fontSize":"24px","fontWeight":"700","color":CYAN,"textAlign":"right"}),
@@ -672,7 +672,6 @@ class App:
                 rows=[row for row in rows if row.get("airline") == airline]
             is_live=bool(payload.get("is_live"))
             color=GREEN if is_live else AMBER
-            status="● LIVE · OPENSKY" if is_live else "● LIVE FEED UNAVAILABLE"
             updated=payload.get("last_updated")
             if updated:
                 try:
@@ -682,6 +681,8 @@ class App:
             else:
                 updated="No current snapshot"
             source=payload.get("source","OpenSky Network")
+            provider="ADSB.LOL" if "ADSB.lol" in source else "OPENSKY"
+            status=f"● LIVE · {provider}" if is_live else "● LIVE FEED UNAVAILABLE"
             updated=f"{updated} · {source} · dashboard checks every 30s"
             weather=get_weather(airport) if airport and airport != "ALL" else None
             if weather:

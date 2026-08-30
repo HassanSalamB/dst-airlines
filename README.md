@@ -10,7 +10,7 @@ The project demonstrates how to turn imperfect external aviation data into a use
 
 ## What the product demonstrates
 
-- **Live Airspace** — current OpenSky aircraft observations across Saudi Arabia and the UAE, filtered by market boundary, gateway catchment, and best-effort callsign-derived airline.
+- **Live Airspace** — current community ADS-B aircraft observations across Saudi Arabia and the UAE, using OpenSky first and ADSB.lol when the public host cannot reach OpenSky.
 - **Market and operations views** — airport, airline, route, delay, and trend analysis over a repeatable Saudi/UAE portfolio simulation.
 - **AI Intelligence** — calibrated CatBoost delay-risk scenarios, baseline comparison, chronological evaluation, feature importance, calibration evidence, and model limitations.
 - **Data engineering** — OpenSky collection, Kafka events, MongoDB persistence, PostgreSQL analytics, and Neo4j route traversal.
@@ -22,11 +22,11 @@ Every product claim belongs to one of three evidence classes:
 
 | Label | Source | Safe interpretation |
 |---|---|---|
-| `LIVE OBSERVATION` | OpenSky state vectors | Aircraft recently detected within the selected geographic filter |
+| `LIVE OBSERVATION` | OpenSky or ADSB.lol community ADS-B observations | Aircraft recently detected within the selected geographic filter |
 | `PORTFOLIO SIMULATION` | Versioned synthetic Saudi/UAE operational history | Repeatable analytical demonstration, not real airline performance |
 | `MODEL SCENARIO` | Model trained and evaluated on the simulation | What-if delay risk, not a forecast for a scheduled commercial flight |
 
-OpenSky does not provide authoritative schedules, gates, cancellations, or delay outcomes. ADSBDB route enrichment is best-effort. Official operational use would require airline data or a commercial source such as Cirium or FlightAware.
+Neither live ADS-B provider supplies authoritative schedules, gates, cancellations, or delay outcomes. ADSBDB route enrichment is best-effort. Official operational use would require airline data or a commercial source such as Cirium or FlightAware.
 
 The canonical vocabulary is recorded in [CONTEXT.md](CONTEXT.md).
 
