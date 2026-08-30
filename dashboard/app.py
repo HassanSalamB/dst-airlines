@@ -19,6 +19,7 @@ from data import (
     get_live_flights,
 )
 from charts import ChartFactory
+from ml_client import get_ml_status, predict_gulf_delay
 from weather import get_weather
 
 BG="#0a0e1a"; CARD="#0f1523"; SURFACE="#161d2e"; BORDER="#1e2a3a"
@@ -29,14 +30,6 @@ DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 AIRLINE_NAMES={name:name for name in GULF_AIRLINES}
 CARD_STYLE={"backgroundColor":CARD,"border":f"1px solid {BORDER}","borderRadius":"12px","padding":"20px"}
 DD_STYLE={"backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}","borderRadius":"8px","fontSize":"13px"}
-
-def get_ml_status():
-    try:
-        response = requests.get(f"{API_BASE_URL}/model/gulf/status", timeout=5)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as exc:
-        return {"available": False, "reason": f"Prediction API unavailable: {exc}"}
 
 def _airport_opts(df,col):
     vals=sorted(df[col].dropna().unique()) if col in df.columns else list(AIRPORTS.keys())
@@ -350,6 +343,13 @@ class LB:
             html.Div(value,style={"fontSize":"26px","fontWeight":"700","color":color,"margin":"6px 0"}),
             html.Div(note,style={"fontSize":"10px","color":MUTED,"lineHeight":"1.4"}),
         ],style={**CARD_STYLE,"flex":"1","minWidth":"150px","padding":"16px"})
+        inference_available = status.get("inference_available", True)
+        deployment_status_label = "● MODEL API ONLINE" if inference_available else "● MODEL METADATA LOADED"
+        deployment_status_color = GREEN if inference_available else AMBER
+        deployment_status_note = status.get(
+            "serving_note",
+            "FastAPI inference service is reachable.",
+        )
         deployment_steps = [
             ("1", "Offline training", "2023 fit · 2024 calibration · 2025 evaluation"),
             ("2", "Versioned artifact", status.get("version", "Unknown version")),
@@ -387,9 +387,9 @@ class LB:
                 ],style={**CARD_STYLE,"flex":"1","borderLeft":f"3px solid {AMBER}"}),
                 html.Div([
                     html.Div("DEPLOYMENT STATUS",style={"fontSize":"10px","fontWeight":"700","color":GREEN,"letterSpacing":"1.4px","marginBottom":"10px"}),
-                    html.Div("● MODEL LOADED",style={"fontSize":"13px","fontWeight":"700","color":GREEN}),
-                    html.Div("Serving through FastAPI · dashboard does not deserialize the model",style={"fontSize":"11px","color":MUTED,"marginTop":"8px"}),
-                ],style={**CARD_STYLE,"flex":"1","borderLeft":f"3px solid {GREEN}"}),
+                    html.Div(deployment_status_label,style={"fontSize":"13px","fontWeight":"700","color":deployment_status_color}),
+                    html.Div(deployment_status_note,style={"fontSize":"11px","color":MUTED,"marginTop":"8px"}),
+                ],style={**CARD_STYLE,"flex":"1","borderLeft":f"3px solid {deployment_status_color}"}),
             ],style={"display":"flex","gap":"12px","marginBottom":"12px"}),
             html.Div([dcc.Graph(figure=charts.ml_metric_comparison(metrics),config={"displayModeBar":False},style={"height":"360px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
             html.Div([
@@ -544,7 +544,7 @@ class App:
             if page == "risk":
                 content = lb.page_risk(df)
             elif page == "ml":
-                content = lb.page_ml(get_ml_status(), charts)
+                content = lb.page_ml(get_ml_status(API_BASE_URL), charts)
             else:
                 content = pages.get(page,lb.page_overview)()
             return content,titles.get(page,"Dashboard")
@@ -833,24 +833,18 @@ class App:
                 "departure_hour":int(hour),"wind_kmh":float(wind),
                 "precipitation_mm":float(precip),"cloud_cover_pct":float(cloud),
             }
-            try:
-                response=requests.post(f"{API_BASE_URL}/predict/gulf",json=payload,timeout=12)
-                response.raise_for_status()
-                prediction=response.json()
-            except requests.RequestException as exc:
-                return html.Div([
-                    html.Div("MODEL SERVICE UNAVAILABLE",style={"fontSize":"11px","fontWeight":"700","color":AMBER,"letterSpacing":"1.4px"}),
-                    html.Div(str(exc),style={"fontSize":"11px","color":MUTED,"marginTop":"8px"}),
-                ],style={**CARD_STYLE,"borderLeft":f"3px solid {AMBER}"})
+            prediction=predict_gulf_delay(API_BASE_URL,payload,frame)
             probability=float(prediction["delay_probability"])
             color=GREEN if probability<0.30 else AMBER if probability<0.60 else RED
             label=prediction["risk_band"]
+            fallback_note = prediction.get("fallback_reason")
             return html.Div([
                 html.Div(f"{label} DELAY RISK",style={"fontSize":"11px","fontWeight":"700","letterSpacing":"1.4px","color":color}),
                 html.Div(f"{probability*100:.1f}%",style={"fontSize":"38px","fontWeight":"700","color":color,"margin":"5px 0"}),
                 html.Div(f"{airline} · {origin} → {dest} · {flight_date} at {int(hour):02d}:00",style={"fontSize":"12px","color":TEXT}),
                 html.Div(f"{prediction['algorithm']} · {prediction['model_version']}",style={"fontSize":"10px","color":CYAN,"marginTop":"8px"}),
                 html.Div(prediction["limitations"],style={"fontSize":"10px","color":MUTED,"marginTop":"5px"}),
+                html.Div(f"API note: {fallback_note}",style={"fontSize":"10px","color":AMBER,"marginTop":"6px"}) if fallback_note else None,
             ],style={**CARD_STYLE,"borderLeft":f"3px solid {color}"})
 
 

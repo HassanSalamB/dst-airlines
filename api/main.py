@@ -5,6 +5,7 @@ route traversal, and the versioned Saudi/UAE delay-risk model.
 import os
 import logging
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import joblib
@@ -25,7 +26,10 @@ MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017/")
 NEO4J_URL = os.getenv("NEO4J_URL", "bolt://neo4j:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS")
-GULF_MODEL_PATH = os.getenv("GULF_MODEL_PATH", "gulf_delay_model.joblib")
+GULF_MODEL_PATH = os.getenv(
+    "GULF_MODEL_PATH",
+    str(Path(__file__).resolve().with_name("gulf_delay_model.joblib")),
+)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DB Clients (lazy init)

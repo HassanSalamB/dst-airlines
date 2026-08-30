@@ -1,0 +1,119 @@
+{
+  "available": true,
+  "version": "gulf-delay-portfolio-v1",
+  "champion": "Calibrated CatBoost",
+  "algorithm": "CatBoostClassifier + sigmoid calibration",
+  "data_scope": "Saudi Arabia and UAE portfolio simulation",
+  "fit_year": 2023,
+  "calibration_year": 2024,
+  "evaluation_year": 2025,
+  "training_rows": 1978,
+  "calibration_rows": 1993,
+  "test_rows": 2029,
+  "positive_rate": 0.4475,
+  "trained_at": "2026-08-28T15:24:46.246039+00:00",
+  "metrics": {
+    "Calibrated CatBoost": {
+      "roc_auc": 0.628,
+      "pr_auc": 0.5847,
+      "brier": 0.2353,
+      "recall": 0.3678
+    },
+    "Logistic Regression": {
+      "roc_auc": 0.6177,
+      "pr_auc": 0.5876,
+      "brier": 0.2382,
+      "recall": 0.5485
+    }
+  },
+  "selection_reason": "Selected for lower Brier loss and higher ROC-AUC; the Logistic Regression baseline retains higher recall at the default 0.50 threshold.",
+  "feature_importance": [
+    {
+      "feature": "PrecipitationMm",
+      "importance": 33.67
+    },
+    {
+      "feature": "Operating_Airline",
+      "importance": 20.73
+    },
+    {
+      "feature": "DepartureHour",
+      "importance": 11.37
+    },
+    {
+      "feature": "WindKmh",
+      "importance": 8.93
+    },
+    {
+      "feature": "Origin",
+      "importance": 7.82
+    },
+    {
+      "feature": "CloudCoverPct",
+      "importance": 4.65
+    },
+    {
+      "feature": "Dest",
+      "importance": 4.33
+    },
+    {
+      "feature": "Month",
+      "importance": 3.89
+    },
+    {
+      "feature": "DayOfWeek",
+      "importance": 2.42
+    },
+    {
+      "feature": "Distance",
+      "importance": 2.19
+    }
+  ],
+  "calibration": [
+    {
+      "predicted": 0.2598,
+      "observed": 0.3288
+    },
+    {
+      "predicted": 0.3386,
+      "observed": 0.3753
+    },
+    {
+      "predicted": 0.4111,
+      "observed": 0.4003
+    },
+    {
+      "predicted": 0.4252,
+      "observed": 0.4211
+    },
+    {
+      "predicted": 0.4822,
+      "observed": 0.448
+    },
+    {
+      "predicted": 0.4921,
+      "observed": 0.4906
+    },
+    {
+      "predicted": 0.4862,
+      "observed": 0.5582
+    },
+    {
+      "predicted": 0.685,
+      "observed": 0.7366
+    }
+  ],
+  "features": [
+    "Operating_Airline",
+    "Origin",
+    "Dest",
+    "DayOfWeek",
+    "Distance",
+    "Month",
+    "DepartureHour",
+    "WindKmh",
+    "PrecipitationMm",
+    "CloudCoverPct"
+  ],
+  "limitations": "Portfolio simulation only; probabilities are not official airline forecasts."
+}
