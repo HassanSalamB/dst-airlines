@@ -24,6 +24,29 @@ class BrandNavigationTest(unittest.TestCase):
         for old_page in ["Airlines", "Airports", "Routes", "Trends", "Prediction Lab"]:
             self.assertNotIn(f',"{old_page}",', APP_SOURCE)
 
+    def test_performance_explorer_owns_route_and_flight_drilldown(self):
+        for identifier in [
+            "performance-date-from",
+            "performance-date-to",
+            "performance-date-summary",
+            "chart-airport-map",
+            "chart-heatmap",
+            "chart-bubble",
+            "flight-lookup-table",
+        ]:
+            self.assertIn(identifier, APP_SOURCE)
+
+        for removed_route_graph_identifier in [
+            "Airport Route Graph",
+            "page_graph",
+            "graph-from",
+            "graph-to",
+            "btn-graph",
+            "graph-result",
+            "lookup-flight-date",
+        ]:
+            self.assertNotIn(removed_route_graph_identifier, APP_SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()

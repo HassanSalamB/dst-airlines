@@ -3,7 +3,6 @@ app.py — DST Airlines Dashboard v4 — FINAL
 """
 from datetime import date
 
-import requests
 import pandas as pd
 import numpy as np
 import dash
@@ -269,6 +268,24 @@ class LB:
                        "Use the sidebar filters to move from market-level performance into specific carriers, gateways, routes and flight rows.",
                        "Data: portfolio simulation for demonstration and scenario analysis."),
             html.Div([
+                html.Div([
+                    html.Div("PERFORMANCE DATE RANGE",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px"}),
+                    html.Div("One date selection updates carrier, gateway, route and flight drilldown results together.",
+                             style={"fontSize":"13px","fontWeight":"700","color":TEXT,"marginTop":"5px"}),
+                    html.Div("Leave both dates blank to use the sidebar Historical Year and Month Range.",
+                             style={"fontSize":"11px","color":MUTED,"marginTop":"4px"}),
+                ],style={"flex":"1.4","minWidth":"260px"}),
+                html.Div([
+                    html.Div("From date",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                    dcc.Input(id="performance-date-from",type="date",style=INPUT_STYLE),
+                ],style={"flex":"1","minWidth":"160px"}),
+                html.Div([
+                    html.Div("Until date",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                    dcc.Input(id="performance-date-to",type="date",style=INPUT_STYLE),
+                ],style={"flex":"1","minWidth":"160px"}),
+                html.Div(id="performance-date-summary",style={"fontSize":"11px","color":MUTED,"textAlign":"right","minWidth":"190px"}),
+            ],style={**CARD_STYLE,"display":"flex","gap":"12px","flexWrap":"wrap","alignItems":"flex-end","marginBottom":"12px","borderLeft":f"3px solid {CYAN}"}),
+            html.Div([
                 html.Div("CARRIER PERFORMANCE",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px","marginBottom":"10px"}),
                 html.Div("Compare delay exposure by airline and see which operational factor dominates each carrier's delayed flights.",
                          style={"fontSize":"11px","color":MUTED,"marginBottom":"12px"}),
@@ -286,14 +303,13 @@ class LB:
                     html.Div([dcc.Graph(id="chart-heatmap",config=g,style={"height":"430px"})],style={**CARD_STYLE,"flex":"1"}),
                     html.Div([dcc.Graph(id="chart-bubble",config=g,style={"height":"430px"})],style={**CARD_STYLE,"flex":"1"}),
                 ],style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"12px"}),
-                self.page_graph(),
             ],style={"marginBottom":"12px"}),
             html.Div([
                 html.Div([
                     html.Div([
                         html.Div("FLIGHT DRILLDOWN",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px"}),
                         html.Div("Find the specific portfolio flights behind the airline delay charts",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginTop":"5px"}),
-                        html.Div("Search by portfolio ID, flight number, route, airport or airline. Date and time narrow the current sidebar filters.",
+                        html.Div("Search by portfolio ID, flight number, route, airport or airline. The Performance date range controls this table and all charts above.",
                                  style={"fontSize":"11px","color":MUTED,"marginTop":"4px"}),
                     ]),
                     html.Div(id="flight-lookup-summary",style={"fontSize":"12px","color":MUTED,"textAlign":"right"}),
@@ -305,10 +321,6 @@ class LB:
                                   placeholder="e.g. DST-01234, SV1042, RUH-DXB",
                                   style=INPUT_STYLE),
                     ],style={"flex":"1.4","minWidth":"220px"}),
-                    html.Div([
-                        html.Div("Exact date",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                        dcc.Input(id="lookup-flight-date",type="date",style=INPUT_STYLE),
-                    ],style={"flex":"1","minWidth":"160px"}),
                     html.Div([
                         html.Div("Departure hour",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
                         dcc.Dropdown(id="lookup-hour",options=hour_options,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown"),
@@ -332,33 +344,6 @@ class LB:
             ],style=CARD_STYLE),
         ])
 
-    def page_graph(self):
-        g={"displayModeBar":False}
-        return html.Div([
-            html.Div([
-                html.Div("🕸 Airport Route Graph",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginBottom":"4px"}),
-                html.Div("Explore Saudi Arabia and UAE gateway connectivity",
-                         style={"fontSize":"12px","color":MUTED,"marginBottom":"16px"}),
-                html.Div([
-                    html.Div([
-                        html.Div("From Airport",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                        dcc.Input(id="graph-from",type="text",placeholder="e.g. RUH",
-                                  style={"backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}",
-                                         "borderRadius":"8px","padding":"8px 12px","fontSize":"13px","width":"100%"}),
-                    ],style={"flex":"1"}),
-                    html.Div([
-                        html.Div("To Airport",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
-                        dcc.Input(id="graph-to",type="text",placeholder="e.g. DXB",
-                                  style={"backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}",
-                                         "borderRadius":"8px","padding":"8px 12px","fontSize":"13px","width":"100%"}),
-                    ],style={"flex":"1"}),
-                    html.Button("Find Path 🕸",id="btn-graph",n_clicks=0,style={
-                        "backgroundColor":PURPLE,"color":TEXT,"border":"none","borderRadius":"8px",
-                        "padding":"10px 20px","fontSize":"13px","fontWeight":"700","cursor":"pointer","alignSelf":"flex-end"}),
-                ],style={"display":"flex","gap":"16px","alignItems":"flex-end","marginBottom":"16px"}),
-                html.Div(id="graph-result"),
-            ],style=CARD_STYLE),
-        ])
     def page_risk(self,df):
         ao=_airline_opts(df); oo=_airport_opts(df,"Origin"); do=_airport_opts(df,"Dest")
         dopt=[{"label":d,"value":d} for d in DAYS]
@@ -624,6 +609,39 @@ class App:
             return df
 
         ins=[Input("filter-gulf-country","value"),Input("filter-gulf-airport","value"),Input("filter-airline","value"),Input("filter-year","value"),Input("filter-month","value"),Input("filter-delayed","value")]
+        performance_ins=[*ins,Input("performance-date-from","value"),Input("performance-date-to","value")]
+
+        def _performance_df(country,airport,airline,year,months,delayed,date_from,date_to):
+            if not date_from and not date_to:
+                return _f(country,airport,airline,year,months,delayed)
+
+            df=_f(country,airport,airline,None,[1,12],delayed).copy()
+            if df.empty or "FlightDate" not in df.columns:
+                return df
+
+            start=pd.to_datetime(date_from).date() if date_from else None
+            end=pd.to_datetime(date_to).date() if date_to else None
+            if start and end and start > end:
+                start,end=end,start
+
+            flight_dates=pd.to_datetime(df["FlightDate"]).dt.date
+            if start:
+                df=df[flight_dates >= start]
+                flight_dates=flight_dates.loc[df.index]
+            if end:
+                df=df[flight_dates <= end]
+            return df
+
+        def _performance_scope_summary(country,airport,airline,year,months,delayed,date_from,date_to):
+            df=_performance_df(country,airport,airline,year,months,delayed,date_from,date_to)
+            total=len(df)
+            delayed_count=int(df["Delayed"].sum()) if total and "Delayed" in df.columns else 0
+            if date_from or date_to:
+                start=date_from or "first available"
+                end=date_to or "latest available"
+                return f"Custom range · {start} to {end} · {total:,} flights · {delayed_count:,} delayed"
+            month_label=f"months {months[0]}-{months[1]}" if months else "all months"
+            return f"Sidebar timeline · {year} · {month_label} · {total:,} flights · {delayed_count:,} delayed"
 
         @app.callback(Output("page-content","children"),Output("page-header","children"),
                       Input("page","data"),*ins)
@@ -737,33 +755,28 @@ class App:
         def ch(*args): return charts.delay_histogram(_f(*args))
         @app.callback(Output("chart-top-routes","figure"),*ins)
         def ct(*args): return charts.top_routes(_f(*args))
-        @app.callback(Output("chart-airline-bar","figure"),*ins)
-        def ca(*args): return charts.airline_delay_bar(_f(*args))
-        @app.callback(Output("chart-cause-stack","figure"),*ins)
-        def cc(*args): return charts.delay_cause_stack(_f(*args))
+        @app.callback(Output("performance-date-summary","children"),*performance_ins)
+        def performance_scope(*args): return _performance_scope_summary(*args)
+        @app.callback(Output("chart-airline-bar","figure"),*performance_ins)
+        def ca(*args): return charts.airline_delay_bar(_performance_df(*args))
+        @app.callback(Output("chart-cause-stack","figure"),*performance_ins)
+        def cc(*args): return charts.delay_cause_stack(_performance_df(*args))
 
         @app.callback(
             Output("flight-lookup-summary","children"),
             Output("flight-lookup-table","data"),
-            *ins,
+            *performance_ins,
             Input("lookup-flight-query","value"),
-            Input("lookup-flight-date","value"),
             Input("lookup-hour","value"),
             Input("lookup-cause","value"),
         )
-        def flight_lookup(country,airport,a,year,m,d,query,exact_date,hour,cause):
-            df=_f(country,airport,a,year,m,d).copy()
+        def flight_lookup(country,airport,a,year,m,d,date_from,date_to,query,hour,cause):
+            df=_performance_df(country,airport,a,year,m,d,date_from,date_to).copy()
             if df.empty:
                 return "No matching portfolio flights", []
 
             df["_DominantCause"]=df.apply(_dominant_delay_cause,axis=1)
 
-            if exact_date:
-                try:
-                    selected_date=pd.to_datetime(exact_date).date()
-                    df=df[df["FlightDate"].dt.date==selected_date]
-                except Exception:
-                    pass
             if hour not in (None,"ALL",""):
                 df=df[df["DepartureHour"]==int(hour)]
             if cause not in (None,"ALL",""):
@@ -790,7 +803,7 @@ class App:
             df=df.sort_values(["FlightDate","DepartureHour","DepartureMinute"],ascending=[False,True,True])
             total=len(df)
             rows=[]
-            for _,row in df.head(100).iterrows():
+            for _,row in df.iterrows():
                 time_label=f"{int(row['DepartureHour']):02d}:{int(row.get('DepartureMinute',0)):02d}"
                 status="Delayed" if int(row.get("Delayed",0) or 0)==1 else "On time"
                 weather_context=(
@@ -813,15 +826,15 @@ class App:
                 })
             shown=len(rows)
             delayed_count=int((df["Delayed"]==1).sum()) if "Delayed" in df.columns else 0
-            return f"{total:,} matches · {delayed_count:,} delayed · showing {shown}", rows
+            return f"{total:,} matches · {delayed_count:,} delayed · showing all {shown:,}", rows
 
-        @app.callback(Output("chart-heatmap","figure"),*ins)
-        def chm(*args): return charts.route_heatmap_top(_f(*args))
-        @app.callback(Output("chart-bubble","figure"),*ins)
-        def cb(*args): return charts.top_routes_bubble(_f(*args))
+        @app.callback(Output("chart-heatmap","figure"),*performance_ins)
+        def chm(*args): return charts.route_heatmap_top(_performance_df(*args))
+        @app.callback(Output("chart-bubble","figure"),*performance_ins)
+        def cb(*args): return charts.top_routes_bubble(_performance_df(*args))
 
-        @app.callback(Output("chart-airport-map","figure"),*ins)
-        def c_map(*args): return charts.airport_map(_f(*args))
+        @app.callback(Output("chart-airport-map","figure"),*performance_ins)
+        def c_map(*args): return charts.airport_map(_performance_df(*args))
 
         @app.callback(
             Output("chart-live-map","figure"),Output("live-table","data"),
@@ -872,62 +885,6 @@ class App:
                 {"fontSize":"11px","fontWeight":"700","letterSpacing":"1.5px","color":color},
                 f"{len(rows)} aircraft",updated,weather_card,
             )
-
-        @app.callback(
-            Output("graph-result","children"),
-            Input("btn-graph","n_clicks"),
-            State("graph-from","value"),
-            State("graph-to","value"),
-            prevent_initial_call=True,
-        )
-        def find_path(n, from_iata, to_iata):
-            if not from_iata or not to_iata:
-                return html.Div("⚠ Enter both airports.",style={"color":AMBER})
-            from_iata = from_iata.upper().strip()
-            to_iata = to_iata.upper().strip()
-            gulf_airports = {
-                code
-                for market in GULF_COUNTRIES.values()
-                for code in market["airports"]
-            }
-            if from_iata in gulf_airports and to_iata in gulf_airports:
-                if from_iata == to_iata:
-                    return html.Div("⚠ Select two different Gulf airports.",style={"color":AMBER})
-                stops = [from_iata, to_iata]
-                return html.Div([
-                    html.Div("✅ Direct Gulf network connection",style={"fontSize":"14px","fontWeight":"700","color":GREEN,"marginBottom":"12px"}),
-                    html.Div([
-                        html.Div([
-                            html.Span(s,style={"backgroundColor":SURFACE,"border":f"1px solid {CYAN}","borderRadius":"8px",
-                                               "padding":"6px 14px","fontSize":"13px","fontWeight":"700","color":CYAN}),
-                            html.Span(" → ",style={"color":MUTED,"fontSize":"16px","margin":"0 4px"}) if i == 0 else None,
-                        ],style={"display":"inline-flex","alignItems":"center"}) for i,s in enumerate(stops)
-                    ],style={"display":"flex","flexWrap":"wrap","alignItems":"center","gap":"4px"}),
-                ],style={**CARD_STYLE,"borderTop":f"2px solid {GREEN}","marginTop":"16px"})
-            try:
-                response = requests.get(
-                    f"{API_BASE_URL}/routes/path",
-                    params={"origin": from_iata, "dest": to_iata},
-                    timeout=10,
-                )
-                if response.status_code == 404:
-                    return html.Div("❌ No path found.",style={"color":RED,"fontSize":"13px"})
-                response.raise_for_status()
-                route = response.json()
-                stops = route["airports"]
-                hops = route["hops"]
-                return html.Div([
-                    html.Div(f"✅ Shortest path: {hops} stop(s)",style={"fontSize":"14px","fontWeight":"700","color":GREEN,"marginBottom":"12px"}),
-                    html.Div([
-                        html.Div([
-                            html.Span(s,style={"backgroundColor":SURFACE,"border":f"1px solid {CYAN}","borderRadius":"8px",
-                                               "padding":"6px 14px","fontSize":"13px","fontWeight":"700","color":CYAN}),
-                            html.Span(" → ",style={"color":MUTED,"fontSize":"16px","margin":"0 4px"}) if i<len(stops)-1 else None,
-                        ],style={"display":"inline-flex","alignItems":"center"}) for i,s in enumerate(stops)
-                    ],style={"display":"flex","flexWrap":"wrap","alignItems":"center","gap":"4px"}),
-                ],style={**CARD_STYLE,"borderTop":f"2px solid {GREEN}","marginTop":"16px"})
-            except Exception as e:
-                return html.Div(f"❌ Error: {str(e)}",style={"color":RED,"fontSize":"13px"})
 
         @app.callback(Output("weather-preview","children"),Input("risk-origin","value"),Input("risk-dest","value"))
         def weather_prev(origin,dest):

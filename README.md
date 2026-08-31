@@ -133,6 +133,8 @@ Open:
 
 The dashboard can use its curated portfolio fallback when the database stack is absent. Live-airspace availability still depends on the upstream community services.
 
+Performance Explorer consolidates carrier, gateway, route and flight-level drilldown into one workspace. Its optional From/Until date range controls every subsection; when left blank, the dashboard uses the sidebar Historical Year and Month Range.
+
 ## Full local platform
 
 Copy the development configuration and replace placeholders as needed:
