@@ -120,11 +120,20 @@ class TestGulfPortfolioData:
     def test_gulf_dataset_contains_model_weather_and_time_features(self):
         frame = get_gulf_flights_df()
         required = {
-            "DepartureHour", "WindKmh", "PrecipitationMm", "CloudCoverPct",
+            "DepartureHour", "DepartureMinute", "WindKmh", "PrecipitationMm", "CloudCoverPct",
         }
         assert required.issubset(frame.columns)
         assert frame["DepartureHour"].between(0, 23).all()
+        assert frame["DepartureMinute"].between(0, 59).all()
         assert frame["CloudCoverPct"].between(0, 100).all()
+
+    def test_gulf_dataset_exposes_flight_level_lookup_fields(self):
+        frame = get_gulf_flights_df()
+        required = {"PortfolioFlightId", "FlightCode", "FlightNumber"}
+        assert required.issubset(frame.columns)
+        assert frame["PortfolioFlightId"].is_unique
+        assert frame["PortfolioFlightId"].str.match(r"^DST-\d{5}$").all()
+        assert frame["FlightCode"].str.match(r"^(RX|SV|XY|EK|EY|FZ|G9)\d{4}$").all()
 
     def test_country_and_gateway_filters_drive_the_data(self):
         frame = get_gulf_flights_df("Saudi Arabia", "RUH")

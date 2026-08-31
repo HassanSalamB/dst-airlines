@@ -30,6 +30,16 @@ DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 AIRLINE_NAMES={name:name for name in GULF_AIRLINES}
 CARD_STYLE={"backgroundColor":CARD,"border":f"1px solid {BORDER}","borderRadius":"12px","padding":"20px"}
 DD_STYLE={"backgroundColor":SURFACE,"color":TEXT,"border":f"1px solid {BORDER}","borderRadius":"8px","fontSize":"13px"}
+INPUT_STYLE={**DD_STYLE,"padding":"8px 12px","width":"100%","height":"38px"}
+DELAY_CAUSE_LABELS={
+    "CarrierDelay":"Carrier",
+    "WeatherDelay":"Weather",
+    "NASDelay":"Airspace / ATC",
+    "SecurityDelay":"Security",
+    "LateAircraftDelay":"Late aircraft",
+    "ON_TIME":"On time / early",
+    "UNASSIGNED":"Delay component unavailable",
+}
 
 def _airport_opts(df,col):
     vals=sorted(df[col].dropna().unique()) if col in df.columns else list(AIRPORTS.keys())
@@ -38,6 +48,29 @@ def _airport_opts(df,col):
 def _airline_opts(df):
     vals=sorted(df["Operating_Airline"].dropna().unique()) if "Operating_Airline" in df.columns else list(AIRLINE_NAMES.keys())
     return [{"label":AIRLINE_NAMES.get(v,v),"value":v} for v in vals]
+
+def _dominant_delay_cause(row):
+    if int(row.get("Delayed", 0) or 0) != 1:
+        return "ON_TIME"
+    values = {
+        cause: float(row.get(cause, 0) or 0)
+        for cause in ["CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay"]
+    }
+    cause, minutes = max(values.items(), key=lambda item: item[1])
+    return cause if minutes > 0 else "UNASSIGNED"
+
+def _dominant_delay_reason(row):
+    cause = row.get("_DominantCause") or _dominant_delay_cause(row)
+    if cause in {"ON_TIME", "UNASSIGNED"}:
+        return DELAY_CAUSE_LABELS[cause]
+    minutes = float(row.get(cause, 0) or 0)
+    return f"{DELAY_CAUSE_LABELS[cause]} ({minutes:.1f} min)"
+
+def _format_delay(value):
+    try:
+        return f"{float(value):.1f}"
+    except (TypeError, ValueError):
+        return "0.0"
 
 class LB:
     @staticmethod
@@ -212,13 +245,75 @@ class LB:
 
     def page_airlines(self):
         g={"displayModeBar":False}
+        columns=[
+            {"name":"Portfolio ID","id":"portfolio_flight"},
+            {"name":"Flight","id":"flight"},
+            {"name":"Date","id":"date"},
+            {"name":"Time","id":"time"},
+            {"name":"Route","id":"route"},
+            {"name":"Airline","id":"airline"},
+            {"name":"Status","id":"status"},
+            {"name":"Dep delay","id":"dep_delay"},
+            {"name":"Arr delay","id":"arr_delay"},
+            {"name":"Dominant reason","id":"reason"},
+            {"name":"Weather context","id":"weather_context"},
+        ]
+        hour_options=[{"label":"All hours","value":"ALL"}]+[
+            {"label":f"{hour:02d}:00","value":hour} for hour in range(24)
+        ]
+        reason_options=[{"label":"All reasons","value":"ALL"}]+[
+            {"label":label,"value":value}
+            for value,label in DELAY_CAUSE_LABELS.items()
+        ]
         return html.Div([
             self.intro("AIRLINE PERFORMANCE","Compare Gulf portfolio carriers",
                        "Benchmarks simulated delay rates and the modeled contribution of carrier, weather, airspace and late-aircraft factors.",
-                       "Select a country first, compare its airlines, then choose one airline to isolate its profile.",
+                       "Select a country first, compare its airlines, then choose one airline to isolate its profile and inspect specific flight rows.",
                        "Data: portfolio simulation for demonstration and scenario analysis."),
             html.Div([dcc.Graph(id="chart-airline-bar",config=g,style={"height":"340px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
-            html.Div([dcc.Graph(id="chart-cause-stack",config=g,style={"height":"320px"})],style=CARD_STYLE),
+            html.Div([dcc.Graph(id="chart-cause-stack",config=g,style={"height":"320px"})],style={**CARD_STYLE,"marginBottom":"12px"}),
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.Div("FLIGHT DRILLDOWN",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px"}),
+                        html.Div("Find the specific portfolio flights behind the airline delay charts",style={"fontSize":"15px","fontWeight":"700","color":TEXT,"marginTop":"5px"}),
+                        html.Div("Search by portfolio ID, flight number, route, airport or airline. Date and time narrow the current sidebar filters.",
+                                 style={"fontSize":"11px","color":MUTED,"marginTop":"4px"}),
+                    ]),
+                    html.Div(id="flight-lookup-summary",style={"fontSize":"12px","color":MUTED,"textAlign":"right"}),
+                ],style={"display":"flex","justifyContent":"space-between","gap":"16px","alignItems":"flex-start","marginBottom":"14px"}),
+                html.Div([
+                    html.Div([
+                        html.Div("Search",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                        dcc.Input(id="lookup-flight-query",type="text",debounce=True,
+                                  placeholder="e.g. DST-01234, SV1042, RUH-DXB",
+                                  style=INPUT_STYLE),
+                    ],style={"flex":"1.4","minWidth":"220px"}),
+                    html.Div([
+                        html.Div("Exact date",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                        dcc.Input(id="lookup-flight-date",type="date",style=INPUT_STYLE),
+                    ],style={"flex":"1","minWidth":"160px"}),
+                    html.Div([
+                        html.Div("Departure hour",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                        dcc.Dropdown(id="lookup-hour",options=hour_options,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown"),
+                    ],style={"flex":"1","minWidth":"150px"}),
+                    html.Div([
+                        html.Div("Dominant reason",style={"color":MUTED,"fontSize":"11px","marginBottom":"5px"}),
+                        dcc.Dropdown(id="lookup-cause",options=reason_options,value="ALL",clearable=False,style=DD_STYLE,className="dst-dropdown"),
+                    ],style={"flex":"1","minWidth":"190px"}),
+                ],style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"14px"}),
+                dash_table.DataTable(
+                    id="flight-lookup-table",columns=columns,data=[],page_size=12,sort_action="native",
+                    style_table={"overflowX":"auto"},
+                    style_header={"backgroundColor":SURFACE,"color":MUTED,"border":f"1px solid {BORDER}","fontWeight":"700"},
+                    style_cell={"backgroundColor":CARD,"color":TEXT,"border":f"1px solid {BORDER}","fontSize":"11px","padding":"8px","textAlign":"left"},
+                    style_data_conditional=[
+                        {"if":{"row_index":"odd"},"backgroundColor":SURFACE},
+                        {"if":{"filter_query":"{status} = \"Delayed\"","column_id":"status"},"color":AMBER,"fontWeight":"700"},
+                        {"if":{"filter_query":"{reason} contains \"Weather\"","column_id":"reason"},"color":CYAN},
+                    ],
+                ),
+            ],style=CARD_STYLE),
         ])
 
     def page_routes(self):
@@ -647,6 +742,80 @@ class App:
         def ca(*args): return charts.airline_delay_bar(_f(*args))
         @app.callback(Output("chart-cause-stack","figure"),*ins)
         def cc(*args): return charts.delay_cause_stack(_f(*args))
+
+        @app.callback(
+            Output("flight-lookup-summary","children"),
+            Output("flight-lookup-table","data"),
+            *ins,
+            Input("lookup-flight-query","value"),
+            Input("lookup-flight-date","value"),
+            Input("lookup-hour","value"),
+            Input("lookup-cause","value"),
+        )
+        def flight_lookup(country,airport,a,year,m,d,query,exact_date,hour,cause):
+            df=_f(country,airport,a,year,m,d).copy()
+            if df.empty:
+                return "No matching portfolio flights", []
+
+            df["_DominantCause"]=df.apply(_dominant_delay_cause,axis=1)
+
+            if exact_date:
+                try:
+                    selected_date=pd.to_datetime(exact_date).date()
+                    df=df[df["FlightDate"].dt.date==selected_date]
+                except Exception:
+                    pass
+            if hour not in (None,"ALL",""):
+                df=df[df["DepartureHour"]==int(hour)]
+            if cause not in (None,"ALL",""):
+                df=df[df["_DominantCause"]==cause]
+
+            q=(query or "").strip().upper()
+            if q:
+                compact=q.replace(" ","")
+                routes=(df["Origin"].astype(str)+"-"+df["Dest"].astype(str)).str.upper()
+                reverse_routes=(df["Dest"].astype(str)+"-"+df["Origin"].astype(str)).str.upper()
+                searchable=(
+                    df["PortfolioFlightId"].astype(str).str.upper()+" "+
+                    df["FlightCode"].astype(str).str.upper()+" "+
+                    df["Operating_Airline"].astype(str).str.upper()+" "+
+                    df["Origin"].astype(str).str.upper()+" "+
+                    df["Dest"].astype(str).str.upper()+" "+
+                    routes+" "+reverse_routes
+                )
+                df=df[searchable.str.contains(q,regex=False) | routes.str.contains(compact,regex=False)]
+
+            if df.empty:
+                return "No matching portfolio flights", []
+
+            df=df.sort_values(["FlightDate","DepartureHour","DepartureMinute"],ascending=[False,True,True])
+            total=len(df)
+            rows=[]
+            for _,row in df.head(100).iterrows():
+                time_label=f"{int(row['DepartureHour']):02d}:{int(row.get('DepartureMinute',0)):02d}"
+                status="Delayed" if int(row.get("Delayed",0) or 0)==1 else "On time"
+                weather_context=(
+                    f"Wind {float(row.get('WindKmh',0) or 0):.1f} km/h, "
+                    f"rain {float(row.get('PrecipitationMm',0) or 0):.1f} mm, "
+                    f"cloud {float(row.get('CloudCoverPct',0) or 0):.0f}%"
+                )
+                rows.append({
+                    "portfolio_flight":row.get("PortfolioFlightId"),
+                    "flight":row.get("FlightCode"),
+                    "date":pd.to_datetime(row["FlightDate"]).strftime("%Y-%m-%d"),
+                    "time":time_label,
+                    "route":f"{row.get('Origin')} -> {row.get('Dest')}",
+                    "airline":row.get("Operating_Airline"),
+                    "status":status,
+                    "dep_delay":f"{_format_delay(row.get('DepDelay'))} min",
+                    "arr_delay":f"{_format_delay(row.get('ArrDelay'))} min",
+                    "reason":_dominant_delay_reason(row),
+                    "weather_context":weather_context,
+                })
+            shown=len(rows)
+            delayed_count=int((df["Delayed"]==1).sum()) if "Delayed" in df.columns else 0
+            return f"{total:,} matches · {delayed_count:,} delayed · showing {shown}", rows
+
         @app.callback(Output("chart-heatmap","figure"),*ins)
         def chm(*args): return charts.route_heatmap_top(_f(*args))
         @app.callback(Output("chart-bubble","figure"),*ins)

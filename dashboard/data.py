@@ -21,6 +21,7 @@ AIRLINE_MAP = {
     "RX":"Riyadh Air","SV":"Saudia","XY":"flynas",
     "EK":"Emirates","EY":"Etihad Airways","FZ":"flydubai","G9":"Air Arabia",
 }
+AIRLINE_CODE_BY_NAME = {name: code for code, name in AIRLINE_MAP.items()}
 
 LIVE_CALLSIGN_PREFIX_AIRLINES = {
     "RXI": "Riyadh Air", "RX": "Riyadh Air",
@@ -191,6 +192,9 @@ def _gulf_mock(n=6000):
     ]
 
     departure_hour = rng.integers(0, 24, size=n)
+    lookup_rng = np.random.default_rng(2031)
+    departure_minute = lookup_rng.choice(np.arange(0, 60, 5), size=n)
+    flight_numbers = lookup_rng.integers(100, 8999, size=n)
     wind_kmh = np.round(np.clip(rng.gamma(2.2, 8.0, n), 0, 75), 1)
     precipitation_mm = np.round(
         np.where(rng.random(n) < 0.16, rng.gamma(1.4, 3.2, n), 0), 1
@@ -231,7 +235,9 @@ def _gulf_mock(n=6000):
         "OriginCountry": [GULF_AIRPORT_COUNTRY[airport] for airport in origins],
         "DestCountry": [GULF_AIRPORT_COUNTRY[airport] for airport in destinations],
         "Distance": [_distance_miles(origin, destination) for origin, destination in zip(origins, destinations)],
+        "FlightNumber": flight_numbers,
         "DepartureHour": departure_hour,
+        "DepartureMinute": departure_minute,
         "WindKmh": wind_kmh,
         "PrecipitationMm": precipitation_mm,
         "CloudCoverPct": cloud_cover_pct,
@@ -247,7 +253,13 @@ def _gulf_mock(n=6000):
     frame["Month"] = frame["FlightDate"].dt.month
     frame["Year"] = frame["FlightDate"].dt.year
     frame["DayOfWeek"] = frame["FlightDate"].dt.day_name()
-    return frame.sort_values("FlightDate").reset_index(drop=True)
+    frame["FlightCode"] = [
+        f"{AIRLINE_CODE_BY_NAME.get(airline, 'DST')}{int(number):04d}"
+        for airline, number in zip(frame["Operating_Airline"], frame["FlightNumber"])
+    ]
+    frame = frame.sort_values(["FlightDate", "DepartureHour", "DepartureMinute", "Origin", "Dest"]).reset_index(drop=True)
+    frame["PortfolioFlightId"] = [f"DST-{idx:05d}" for idx in range(1, len(frame) + 1)]
+    return frame
 
 
 _GULF_MOCK = _gulf_mock()
