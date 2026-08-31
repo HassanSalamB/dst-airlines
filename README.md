@@ -11,8 +11,8 @@ The project demonstrates how to turn imperfect external aviation data into a use
 ## What the product demonstrates
 
 - **Live Airspace** — current community ADS-B aircraft observations across Saudi Arabia and the UAE, using OpenSky first and ADSB.lol when the public host cannot reach OpenSky.
-- **Market and operations views** — airport, airline, route, delay, and trend analysis over a repeatable Saudi/UAE portfolio simulation.
-- **AI Intelligence** — calibrated CatBoost delay-risk scenarios, baseline comparison, chronological evaluation, feature importance, calibration evidence, and model limitations.
+- **Performance Explorer** — airport, airline, route, delay-cause, and flight-level drilldown over a repeatable Saudi/UAE portfolio simulation.
+- **AI Delay Lab** — calibrated CatBoost delay-risk scenarios, baseline comparison, chronological evaluation, feature importance, calibration evidence, and model limitations.
 - **Data engineering** — OpenSky collection, Kafka events, MongoDB persistence, PostgreSQL analytics, and Neo4j route traversal.
 - **DataOps** — containers, Kubernetes validation, Terraform, GitHub Actions, Trivy, Dependabot, Prometheus, Grafana, backup automation, and recovery guidance.
 
@@ -183,7 +183,7 @@ FastAPI: GET /live
 
 Gateway assignment is proximity-based. Callsign-derived airline and ADSBDB route matches may be unavailable and must not be treated as official movement data.
 
-## AI Intelligence
+## AI Delay Lab
 
 The committed `gulf-delay-portfolio-v1` artifact uses a chronological evaluation design:
 

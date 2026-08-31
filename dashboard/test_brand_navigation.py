@@ -11,6 +11,19 @@ class BrandNavigationTest(unittest.TestCase):
         self.assertNotIn('html.A("⌂"', APP_SOURCE)
         self.assertIn('aria-label":"Back to hassansalamb.dev"', APP_SOURCE)
 
+    def test_sidebar_uses_consolidated_product_sections(self):
+        for label in [
+            "Live Airspace",
+            "Historical Overview",
+            "Performance Explorer",
+            "Risk Analyzer",
+            "AI Delay Lab",
+        ]:
+            self.assertIn(label, APP_SOURCE)
+
+        for old_page in ["Airlines", "Airports", "Routes", "Trends", "Prediction Lab"]:
+            self.assertNotIn(f',"{old_page}",', APP_SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()
