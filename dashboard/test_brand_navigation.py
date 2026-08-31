@@ -29,6 +29,10 @@ class BrandNavigationTest(unittest.TestCase):
             "performance-date-from",
             "performance-date-to",
             "performance-date-summary",
+            "performance-section",
+            "perf-tab-carrier",
+            "perf-tab-network",
+            "perf-tab-flights",
             "chart-airport-map",
             "chart-heatmap",
             "chart-bubble",
@@ -44,6 +48,7 @@ class BrandNavigationTest(unittest.TestCase):
             "btn-graph",
             "graph-result",
             "lookup-flight-date",
+            "gulf-focus",
         ]:
             self.assertNotIn(removed_route_graph_identifier, APP_SOURCE)
 

@@ -262,7 +262,9 @@ class LB:
             {"label":label,"value":value}
             for value,label in DELAY_CAUSE_LABELS.items()
         ]
+        tab_base={"border":f"1px solid {BORDER}","borderRadius":"8px","padding":"10px 14px","fontSize":"12px","fontWeight":"700","cursor":"pointer","flex":"1","minWidth":"150px"}
         return html.Div([
+            dcc.Store(id="performance-section",data="carrier"),
             self.intro("PERFORMANCE EXPLORER","Analyze carriers, gateways, routes and specific flights",
                        "Combines the portfolio's airline, airport and route analysis into one deep operational workspace.",
                        "Use the sidebar filters to move from market-level performance into specific carriers, gateways, routes and flight rows.",
@@ -286,6 +288,14 @@ class LB:
                 html.Div(id="performance-date-summary",style={"fontSize":"11px","color":MUTED,"textAlign":"right","minWidth":"190px"}),
             ],style={**CARD_STYLE,"display":"flex","gap":"12px","flexWrap":"wrap","alignItems":"flex-end","marginBottom":"12px","borderLeft":f"3px solid {CYAN}"}),
             html.Div([
+                html.Div("PERFORMANCE VIEWS",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px","marginBottom":"10px"}),
+                html.Div([
+                    html.Button("Carrier",id="perf-tab-carrier",n_clicks=0,style={**tab_base,"backgroundColor":CYAN,"color":BG}),
+                    html.Button("Gateway / Route",id="perf-tab-network",n_clicks=0,style={**tab_base,"backgroundColor":SURFACE,"color":MUTED}),
+                    html.Button("Flight Drilldown",id="perf-tab-flights",n_clicks=0,style={**tab_base,"backgroundColor":SURFACE,"color":MUTED}),
+                ],style={"display":"flex","gap":"10px","flexWrap":"wrap"}),
+            ],style={**CARD_STYLE,"padding":"14px","marginBottom":"12px"}),
+            html.Div([
                 html.Div("CARRIER PERFORMANCE",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px","marginBottom":"10px"}),
                 html.Div("Compare delay exposure by airline and see which operational factor dominates each carrier's delayed flights.",
                          style={"fontSize":"11px","color":MUTED,"marginBottom":"12px"}),
@@ -293,7 +303,7 @@ class LB:
                     html.Div([dcc.Graph(id="chart-airline-bar",config=g,style={"height":"340px"})],style={**CARD_STYLE,"flex":"1"}),
                     html.Div([dcc.Graph(id="chart-cause-stack",config=g,style={"height":"340px"})],style={**CARD_STYLE,"flex":"1"}),
                 ],style={"display":"flex","gap":"12px","flexWrap":"wrap"}),
-            ],style={"marginBottom":"12px"}),
+            ],id="performance-section-carrier",style={"marginBottom":"12px"}),
             html.Div([
                 html.Div("GATEWAY AND ROUTE PERFORMANCE",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.4px","marginBottom":"10px"}),
                 html.Div("Move from airport pressure to origin-destination concentration without leaving the analysis context.",
@@ -303,7 +313,7 @@ class LB:
                     html.Div([dcc.Graph(id="chart-heatmap",config=g,style={"height":"430px"})],style={**CARD_STYLE,"flex":"1"}),
                     html.Div([dcc.Graph(id="chart-bubble",config=g,style={"height":"430px"})],style={**CARD_STYLE,"flex":"1"}),
                 ],style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"12px"}),
-            ],style={"marginBottom":"12px"}),
+            ],id="performance-section-network",style={"display":"none","marginBottom":"12px"}),
             html.Div([
                 html.Div([
                     html.Div([
@@ -341,7 +351,7 @@ class LB:
                         {"if":{"filter_query":"{reason} contains \"Weather\"","column_id":"reason"},"color":CYAN},
                     ],
                 ),
-            ],style=CARD_STYLE),
+            ],id="performance-section-flights",style={"display":"none",**CARD_STYLE}),
         ])
 
     def page_risk(self,df):
@@ -557,7 +567,6 @@ class App:
                     dcc.Store(id="page",data="overview"),
                     dcc.Interval(id="tick",interval=30000,n_intervals=0),
                     html.Div(id="page-header",style={"fontSize":"20px","fontWeight":"700","color":TEXT,"marginBottom":"16px"}),
-                    html.Div(id="gulf-focus",style={"marginBottom":"16px"}),
                     html.Div(id="page-content"),
                 ],style={"flex":"1","padding":"20px 24px","overflowY":"auto","backgroundColor":BG,"minHeight":"calc(100vh - 56px)"}),
             ],style={"display":"flex"}),
@@ -696,43 +705,6 @@ class App:
                 {"label": airline, "value": airline} for airline in airlines
             ], "ALL"
 
-        @app.callback(
-            Output("gulf-focus", "children"),
-            Input("filter-gulf-country", "value"),
-            Input("filter-gulf-airport", "value"),
-        )
-        def gulf_focus(country, airport):
-            if country == "ALL":
-                airport_name = "All Saudi and UAE gateways"
-                if airport != "ALL":
-                    for market in GULF_COUNTRIES.values():
-                        if airport in market["airports"]:
-                            airport_name = market["airports"][airport]
-                            break
-                return html.Div([
-                    html.Div([
-                        html.Span("🌍  Saudi Arabia + UAE",style={"fontSize":"14px","fontWeight":"700","color":TEXT}),
-                        html.Span(" · ",style={"color":MUTED}),
-                        html.Span(f"{airport if airport != 'ALL' else 'All gateways'} · {airport_name}",style={"fontSize":"12px","color":CYAN}),
-                    ]),
-                    html.Div("Combined Gulf portfolio lens across both countries",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
-                ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {GREEN}"})
-            if country not in GULF_COUNTRIES:
-                return html.Div([
-                    html.Span("GULF MARKET LENS",style={"fontSize":"10px","fontWeight":"700","color":CYAN,"letterSpacing":"1.5px","marginRight":"12px"}),
-                    html.Span("Select a country and gateway to focus the network context.",style={"fontSize":"12px","color":MUTED}),
-                ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {CYAN}"})
-            market = GULF_COUNTRIES[country]
-            airport_name = market["airports"].get(airport, "All gateways")
-            return html.Div([
-                html.Div([
-                    html.Span(f"{market['flag']}  {country}",style={"fontSize":"14px","fontWeight":"700","color":TEXT}),
-                    html.Span(" · ",style={"color":MUTED}),
-                    html.Span(f"{airport if airport != 'ALL' else 'All gateways'} · {airport_name}",style={"fontSize":"12px","color":CYAN}),
-                ]),
-                html.Div(f"{market['focus']} · shared country, gateway and airline context for every operations view",style={"fontSize":"11px","color":MUTED,"marginTop":"5px"}),
-            ],style={**CARD_STYLE,"padding":"12px 16px","borderLeft":f"3px solid {GREEN}"})
-
         @app.callback(Output("kpi-row","children"),*ins)
         def kpis(country,airport,a,year,m,d):
             df=_f(country,airport,a,year,m,d); t=len(df)
@@ -757,6 +729,52 @@ class App:
         def ct(*args): return charts.top_routes(_f(*args))
         @app.callback(Output("performance-date-summary","children"),*performance_ins)
         def performance_scope(*args): return _performance_scope_summary(*args)
+
+        app.clientside_callback(
+            """
+            function(carrier,network,flights,current){
+                const triggered=dash_clientside.callback_context.triggered;
+                if(!triggered || !triggered.length){
+                    return current || "carrier";
+                }
+                const id=triggered[0].prop_id.split(".")[0];
+                if(id==="perf-tab-network"){return "network";}
+                if(id==="perf-tab-flights"){return "flights";}
+                return "carrier";
+            }
+            """,
+            Output("performance-section","data"),
+            Input("perf-tab-carrier","n_clicks"),
+            Input("perf-tab-network","n_clicks"),
+            Input("perf-tab-flights","n_clicks"),
+            State("performance-section","data"),
+            prevent_initial_call=True,
+        )
+
+        @app.callback(
+            Output("perf-tab-carrier","style"),
+            Output("perf-tab-network","style"),
+            Output("perf-tab-flights","style"),
+            Output("performance-section-carrier","style"),
+            Output("performance-section-network","style"),
+            Output("performance-section-flights","style"),
+            Input("performance-section","data"),
+        )
+        def performance_section_styles(section):
+            section=section or "carrier"
+            base={"border":f"1px solid {BORDER}","borderRadius":"8px","padding":"10px 14px","fontSize":"12px","fontWeight":"700","cursor":"pointer","flex":"1","minWidth":"150px"}
+            active={**base,"backgroundColor":CYAN,"color":BG}
+            inactive={**base,"backgroundColor":SURFACE,"color":MUTED}
+            carrier_style={"marginBottom":"12px"} if section=="carrier" else {"display":"none","marginBottom":"12px"}
+            network_style={"marginBottom":"12px"} if section=="network" else {"display":"none","marginBottom":"12px"}
+            flights_style={**CARD_STYLE} if section=="flights" else {**CARD_STYLE,"display":"none"}
+            return (
+                active if section=="carrier" else inactive,
+                active if section=="network" else inactive,
+                active if section=="flights" else inactive,
+                carrier_style,network_style,flights_style,
+            )
+
         @app.callback(Output("chart-airline-bar","figure"),*performance_ins)
         def ca(*args): return charts.airline_delay_bar(_performance_df(*args))
         @app.callback(Output("chart-cause-stack","figure"),*performance_ins)
